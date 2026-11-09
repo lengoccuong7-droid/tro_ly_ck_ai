@@ -12,8 +12,6 @@ def lay_du_lieu_api_chuan(ma_ck):
     """
     Hàm gọi API trực tuyến. Ép timeout=3s và try-except giúp chống treo app 100% trên điện thoại.
     """
-    # URL gọi API (Anh có thể thay thế bằng đường dẫn API chứng khoán thực tế của anh sau này)
-    # Tạm thời dùng link test JSON công khai có độ bền cao để kiểm tra giao diện
     url = f"https://jsonplaceholder.typicode.com/todos/1"
     
     try:
@@ -22,11 +20,10 @@ def lay_du_lieu_api_chuan(ma_ck):
         
         if response.status_code == 200:
             raw_data = response.json()
-            # Giả lập đóng gói dữ liệu giá và khối lượng trả về từ API
             return {
                 "status": "success",
                 "ma_ck": ma_ck.upper(),
-                "gia": 85.5,         # Dữ liệu mẫu lấy từ API
+                "gia": 85.5,
                 "khoi_luong": 1250000,
                 "chi_tiet": raw_data
             }
@@ -53,7 +50,6 @@ with tab1:
     ma_nhap = st.text_input("Nhập mã chứng khoán:", value="FPT").upper()
     
     if st.button("🚀 Kéo Dữ Liệu Ngay (Chống Treo 3s)", type="primary", use_container_width=True):
-        # Hiệu ứng vòng xoay tải tối đa 3 giây
         with st.spinner(f"Đang gọi API lấy mã {ma_nhap} (Tối đa 3s)..."):
             ket_qua = lay_du_lieu_api_chuan(ma_nhap)
             
@@ -63,7 +59,7 @@ with tab1:
                 st.success(f"✅ Kéo dữ liệu mã **{ma_nhap}** thành công!")
                 
                 # --- ĐẦU RA CỦA API ĐƯỢC BƠM THẲNG VÀO CÁC CHỈ SỐ ---
-                gia_ hien_tai = ket_qua["gia"]
+                gia_hien_tai = ket_qua["gia"]
                 kl = ket_qua["khoi_luong"]
                 
                 col1, col2 = st.columns(2)

@@ -12,7 +12,7 @@ import io
 # CẤU HÌNH THÔNG TIN ỨNG DỤNG & CƠ SỞ DỮ LIỆU
 # -----------------------------------------------------------------------------
 APP_NAME = "THẦY TRÒ TRADING"
-APP_VERSION = "3.2"
+APP_VERSION = "3.3"
 DB_PATH = "trading_system.db"
 
 st.set_page_config(
@@ -42,7 +42,7 @@ def init_system_db():
             )
         ''')
         
-        # Bảng quản lý người dùng & phân quyền (Admin / User)
+        # Bảng quản lý người dùng & phân quyền
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS users (
                 username TEXT PRIMARY KEY,
@@ -52,7 +52,7 @@ def init_system_db():
             )
         ''')
         
-        # Tạo sẵn tài khoản Admin mặc định (Pass: 123456, Mã khôi phục: admin)
+        # Tạo sẵn tài khoản Admin mặc định (Pass: 123456)
         cursor.execute("SELECT COUNT(*) FROM users WHERE username = 'admin'")
         if cursor.fetchone()[0] == 0:
             admin_pass_hash = hashlib.sha256(str.encode("123456")).hexdigest()
@@ -75,7 +75,7 @@ def init_user_data(username):
         ])
 
 # -----------------------------------------------------------------------------
-# CÁC HÀM TÍNH TOÁN CHỈ BÁO & PHÂN TÍCH THỰC CHIẾN
+# CÁC HÀM TÍNH TOÁN CHỈ BÁO & LOGIC THỰC CHIẾN CHUẨN XÁC
 # -----------------------------------------------------------------------------
 def add_indicators(df):
     df = df.copy()
@@ -120,16 +120,16 @@ def find_support_resistance(df):
     if df is None or len(df) < 10:
         return {"support": 0, "resistance": 0, "dist_to_support_pct": 0, "dist_to_resistance_pct": 0}
     recent = df.tail(20)
-    sup = recent['low'].min()
-    res = recent['high'].max()
-    last_c = df.iloc[-1]['close']
+    sup = float(recent['low'].min())
+    res = float(recent['high'].max())
+    last_c = float(df.iloc[-1]['close'])
     dist_sup = round(((last_c - sup) / last_c) * 100, 2)
     dist_res = round(((res - last_c) / last_c) * 100, 2)
     return {"support": sup, "resistance": res, "dist_to_support_pct": dist_sup, "dist_to_resistance_pct": dist_res}
 
 def run_ai_analysis(df, symbol, ato_data=None, financial_metrics=None):
     last = df.iloc[-1]
-    c = last['close']
+    c = float(last['close'])
     summary = f"Cổ phiếu {symbol} đang giao dịch ở vùng giá {c:,.2f}. Khối lượng giao dịch ổn định, xu hướng kỹ thuật bám sát đường MA20."
     fin_summary = "ROE ổn định, P/E hợp lý so với trung bình ngành."
     if financial_metrics and financial_metrics.get('roe'):
@@ -148,17 +148,38 @@ def run_ai_analysis(df, symbol, ato_data=None, financial_metrics=None):
     }
 
 def make_trading_decision(df, ai_res):
+    """
+    HÀM QUYẾT ĐỊNH THỰC CHIẾN (ĐÃ FIX LOGIC CHỐT LỜI & VÙNG GIÁ):
+    - Đảm bảo Giá mục tiêu (TP) LUÔN CAO HƠN giá hiện tại.
+    - Vùng mua & Cắt lỗ nằm ở phía dưới giá hiện tại.
+    """
     last = df.iloc[-1]
-    c = last['close']
-    sup = df.tail(20)['low'].min()
-    res = df.tail(20)['high'].max()
+    c = float(last['close'])
+    recent = df.tail(20)
+    sup = float(recent['low'].min())
+    res = float(recent['high'].max())
+    
+    # Chuẩn hóa nếu hỗ trợ/kháng cự bị lệch so với giá hiện tại
+    if sup >= c:
+        sup = c * 0.95
+    if res <= c:
+        res = c * 1.07  # Đặt mục tiêu cách trên 7% nếu đang ở đỉnh
+        
+    buy_low = round(sup * 1.00, 2)
+    buy_high = round(sup * 1.02, 2)
+    
+    # Mục tiêu chốt lời luôn cao hơn giá hiện tại (ít nhất +5% đến +8%)
+    target_p = round(max(res, c * 1.06), 2)
+    
+    # Cắt lỗ đặt dưới hỗ trợ
+    stop_l = round(sup * 0.96, 2)
     
     return {
-        "decision": "CANH MUA TÍCH LŨY",
-        "buy_zone": f"{sup * 1.01:,.1f} - {sup * 1.03:,.1f}",
+        "decision": "CANH MUA TÍCH LŨY" if c >= sup else "Đang test hỗ trợ",
+        "buy_zone": f"{buy_low:,.1f} - {buy_high:,.1f}",
         "confirm_price": f"{c * 1.01:,.1f}",
-        "target_price": f"{res * 0.98:,.1f}",
-        "stop_loss": f"{sup * 0.96:,.1f}"
+        "target_price": f"{target_p:,.1f}",
+        "stop_loss": f"{stop_l:,.1f}"
     }
 
 def save_analysis(symbol, last_close, score, decision, buy_zone, target_price, stop_loss, summary):
@@ -171,7 +192,7 @@ def save_analysis(symbol, last_close, score, decision, buy_zone, target_price, s
         conn.commit()
 
 # -----------------------------------------------------------------------------
-# 2. XÁC THỰC ĐĂNG NHẬP / ĐĂNG KÝ & QUÊN MẬT KHẨU
+# XÁC THỰC ĐĂNG NHẬP / ĐĂNG KÝ & QUÊN MẬT KHẨU
 # -----------------------------------------------------------------------------
 if st.session_state["logged_in_user"] is None:
     st.title(f"📈 {APP_NAME} (v{APP_VERSION} ULTIMATE PRO)")
@@ -261,7 +282,7 @@ if st.session_state["logged_in_user"] is None:
     st.stop()
 
 # -----------------------------------------------------------------------------
-# 3. GIAO DIỆN CHÍNH SAU KHI ĐĂNG NHẬP
+# GIAO DIỆN CHÍNH SAU KHI ĐĂNG NHẬP
 # -----------------------------------------------------------------------------
 current_user = st.session_state["logged_in_user"]
 init_user_data(current_user)
@@ -393,7 +414,7 @@ main_tab1, main_tab2, main_tab3, main_tab4 = st.tabs([
 with main_tab1:
     if df_raw is None or df_raw.empty:
         st.warning("⚠️ CHƯA CÓ DỮ LIỆU LỊCH SỬ: Vui lòng tải tệp CSV/Excel từ bảng giá ở thanh bên trái để tiến hành phân tích.")
-        st.info("💡 Hướng dẫn: Tải file dữ liệu lịch sử của mã cổ phiếu (như giá ssi, giá fpt, vic.con) vào mục tải tệp ở sidebar.")
+        st.info("💡 Hướng dẫn: Tải file dữ liệu lịch sử của mã cổ phiếu vào mục tải tệp ở sidebar.")
     else:
         try:
             df = add_indicators(df_raw)

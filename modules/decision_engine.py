@@ -1,6 +1,6 @@
 import pandas as pd
 from modules.technical_analysis import evaluate_technical
-from modules.support_resistance import find_support_resistance
+from modules.support_resistance import find_support_resiéistance
 
 def make_trading_decision(df: pd.DataFrame, ai_result: dict) -> dict:
     last = df.iloc[-1]

@@ -1,6 +1,6 @@
 import pandas as pd
 from modules.technical_analysis import evaluate_technical
-from modules.support_resistance import find_support_resiéistance
+from modules.support_resistance import find_support_resistance
 
 def make_trading_decision(df: pd.DataFrame, ai_result: dict) -> dict:
     last = df.iloc[-1]
@@ -8,7 +8,7 @@ def make_trading_decision(df: pd.DataFrame, ai_result: dict) -> dict:
     tech = evaluate_technical(df)
     sr = find_support_resistance(df)
     score = tech["score"]
-    risk_level = ai_result["risk_level"]
+    risk_level = ai_result.get("risk_level", "TRUNG BÌNH")
     atr = float(last.get("ATR14", last_close * 0.02))
 
     if score >= 3 and risk_level != "CAO":
@@ -27,24 +27,23 @@ def make_trading_decision(df: pd.DataFrame, ai_result: dict) -> dict:
         decision = "BÁN"
         reason = "Tín hiệu kỹ thuật vi phạm ngưỡng an toàn, áp lực bán xả lớn."
 
-    support_price = sr["support"]
-    resistance_price = sr["resistance"]
-
-    # --- TỐT ƯU VÙNG MUA CHUẨN (CÓ KHÔNG GIAN THỞ BẰNG 0.5 * ATR) ---
-    buy_zone_low = round(max(support_price, last_close - 1.5 * atr), 2)
+    # --- THU HẸP VÙNG MUA & QUẢN TRỊ RỦI RO HỢP LÝ ---
+    # Vùng mua xoay quanh giá hiện tại +/- 1.5% đến 2%
+    buy_zone_low = round(last_close * 0.98, -2)
+    buy_zone_high = round(last_close * 1.005, -2)
     
-    # Cận trên cộng thêm biên độ ATR ngắn hạn nhưng chặn lại không vượt quá Kháng cự
-    buy_zone_high = round(min(resistance_price, last_close + 0.5 * atr), 2)
-    
-    # Đảm bảo cận dưới không lớn hơn cận trên
     if buy_zone_low > buy_zone_high:
-        buy_zone_low = round(buy_zone_high * 0.98, 2)
+        buy_zone_low = buy_zone_high
 
     buy_zone = f"{buy_zone_low:,.0f} - {buy_zone_high:,.0f}"
 
-    confirm_price = round(last_close * 1.015, 2)
-    target_price = round(max(resistance_price, last_close + 2.5 * atr), 2)
-    stop_loss = round(min(support_price * 0.97, last_close - 2.0 * atr), 2)
+    # Cắt lỗ siết chặt ở mức 5 - 6% từ giá hiện tại
+    stop_loss = round(last_close * 0.95, -2)
+    
+    # Chốt lời kỳ vọng R:R khoảng 1:1.5 hoặc 1:2 (+8% đến +10%)
+    target_price = round(last_close * 1.09, -2)
+    
+    confirm_price = round(last_close * 1.01, -2)
 
     return {
         "decision": decision,

@@ -6,7 +6,7 @@ from plotly.subplots import make_subplots
 import hashlib
 import sqlite3
 import datetime
-import requests  # Thư viện gọi API an toàn
+from vnstock import stock_historical_data  # Thư viện lấy dữ liệu thực tế thị trường CK Việt Nam
 
 from config import APP_NAME, APP_VERSION, DB_PATH
 from modules.indicators import add_indicators
@@ -181,32 +181,7 @@ with h_col2:
         st.rerun()
 
 # -----------------------------------------------------------------------------
-# HÀM GỌI API TRỰC TUYẾN CHỐNG TREO 3S CHO MOBILE
-# -----------------------------------------------------------------------------
-def tai_du_lieu_tu_api_online(ma_ck):
-    """
-    Hàm gọi API trực tuyến lấy thông tin chứng khoán.
-    Áp dụng timeout=3 giây và try-except chống treo app 100% trên điện thoại.
-    """
-    # Thay thế bằng URL API thực tế của sếp khi kết nối nguồn dữ liệu chính thức
-    url = f"https://jsonplaceholder.typicode.com/todos/1"
-    
-    try:
-        response = requests.get(url, timeout=3)
-        if response.status_code == 200:
-            data = response.json()
-            return {"status": "success", "data": data}
-        else:
-            return {"status": "error", "message": f"Mã lỗi từ server: {response.status_code}"}
-    except requests.exceptions.Timeout:
-        return {"status": "error", "message": "TIMEOUT: Server phản hồi quá 3 giây. Đã tự ngắt ngầm, app không bị đứng hình!"}
-    except requests.exceptions.ConnectionError:
-        return {"status": "error", "message": "CONNECTION_ERROR: Không thể kết nối mạng (Kiểm tra lại 4G/Wifi)."}
-    except Exception as e:
-        return {"status": "error", "message": f"Lỗi phát sinh: {str(e)}"}
-
-# -----------------------------------------------------------------------------
-# SIDEBAR: NGUỒN DỮ LIỆU & GỌI API TRỰC TUYẾN
+# SIDEBAR: NGUỒN DỮ LIỆU & KÉO API THỰC TẾ THỊ TRƯỜNG
 # -----------------------------------------------------------------------------
 st.sidebar.header("⚙️ 1. Nguồn Dữ Liệu Lịch Sử & API")
 
@@ -260,34 +235,40 @@ if data_source_mode == "📁 Nạp File (CSV/Excel)":
         except Exception as e:
             st.sidebar.error(f"Lỗi đọc tệp: {e}")
 else:
-    st.sidebar.info("💡 Trạm API trực tuyến đã được kích hoạt chống treo 3 giây trên di động.")
-    if st.sidebar.button("🚀 Kéo Dữ Liệu API Ngay", use_container_width=True):
-        with st.spinner(f"Đang gọi API lấy mã {symbol_input} (Tối đa 3s)..."):
-            api_res = tai_du_lieu_tu_api_online(symbol_input)
-            if api_res["status"] == "error":
-                st.sidebar.error(f"❌ {api_res['message']}")
-            else:
-                st.sidebar.success(f"✅ Kết nối API mã **{symbol_input}** thành công!")
+    st.sidebar.info("💡 Trạm API trực tuyến đã kết nối dữ liệu thị trường thực tế.")
+    if st.sidebar.button("🚀 Kéo Dữ Liệu Thực Tế Ngay", use_container_width=True):
+        with st.spinner(f"Đang tải dữ liệu thực tế mã {symbol_input} (Chuẩn xác 100%)..."):
+            try:
+                end_date = datetime.date.today().strftime("%Y-%m-%d")
+                start_date = (datetime.date.today() - datetime.timedelta(days=365)).strftime("%Y-%m-%d")
                 
-                # --- TỰ ĐỘNG TẠO KHUNG DỮ LIỆU LỊCH SỬ GIẢ LẬP ĐỂ CÁC TAB KHÔNG BỊ TRỐNG ---
-                dates = pd.date_range(end=datetime.date.today(), periods=50)
-                np.random.seed(42)
-                base_price = 85.0 if symbol_input == "FPT" else 25.0
-                prices = base_price + np.cumsum(np.random.randn(50) * 0.5)
+                # Gọi dữ liệu thực tế qua vnstock
+                df_api = stock_historical_data(symbol=symbol_input, start_date=start_date, end_date=end_date)
                 
-                df_raw = pd.DataFrame({
-                    "date": dates,
-                    "open": prices - 0.2,
-                    "high": prices + 0.8,
-                    "low": prices - 0.8,
-                    "close": prices,
-                    "volume": np.random.randint(100000, 2000000, size=50)
-                })
-                st.session_state["api_df_raw"] = df_raw
+                if df_api is not None and not df_api.empty:
+                    df_api.columns = [str(c).strip().lower() for c in df_api.columns]
+                    rename_dict = {
+                        "time": "date", "tradingdate": "date",
+                        "openprice": "open", "highprice": "high",
+                        "lowprice": "low", "closeprice": "close",
+                        "matchedvolume": "volume", "volume": "volume"
+                    }
+                    df_api = df_api.rename(columns=rename_dict)
+                    if "date" in df_api.columns:
+                        df_api["date"] = pd.to_datetime(df_api["date"])
+                        df_api = df_api.sort_values("date").reset_index(drop=True)
+                    
+                    st.session_state["api_df_raw"] = df_api
+                    st.sidebar.success(f"✅ Đã kéo thành công dữ liệu thật mã **{symbol_input}**!")
+                else:
+                    st.sidebar.error(f"❌ Không tìm thấy dữ liệu cho mã '{symbol_input}'.")
+            except Exception as e:
+                st.sidebar.error(f"❌ Lỗi kết nối dữ liệu thực tế: {str(e)}")
 
-# Nếu đang dùng chế độ API và đã kéo thành công, gán df_raw vào để phân tích ngay lập tức
+# Nếu đang dùng chế độ API trực tuyến và đã kéo thành công, gán vào df_raw
 if data_source_mode == "🌐 Lấy Trực Tuyến qua API" and "api_df_raw" in st.session_state:
     df_raw = st.session_state["api_df_raw"]
+
 st.sidebar.markdown("---")
 st.sidebar.header("⚙️ 2. Cập Nhật Giá Đầu Phiên (ATO)")
 col_a1, col_a2 = st.sidebar.columns(2)
@@ -332,7 +313,7 @@ main_tab1, main_tab2, main_tab3, main_tab4 = st.tabs([
 # --- TAB 1: KỸ THUẬT & TÀI CHÍNH ---
 with main_tab1:
     if df_raw is None or df_raw.empty:
-        st.warning("⚠️ CHƯA CÓ DỮ LIỆU LỊCH SỬ: Vui lòng tải tệp CSV/Excel hoặc chọn lấy dữ liệu qua API ở thanh bên trái.")
+        st.warning("⚠️ CHƯA CÓ DỮ LIỆU LỊCH SỬ: Vui lòng tải tệp CSV/Excel hoặc bấm kéo dữ liệu thực tế qua API ở thanh bên trái.")
         st.info("💡 Hướng dẫn: Chọn chế độ nạp file hoặc kéo API trực tuyến để bắt đầu.")
     else:
         try:

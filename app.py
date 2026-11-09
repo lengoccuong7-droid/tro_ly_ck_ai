@@ -48,7 +48,7 @@ def init_system_db():
         ''')
         
         # Bảng quản lý người dùng & phân quyền (Admin / User)
-       # cursor.execute('''
+        cursor.execute('''
             CREATE TABLE IF NOT EXISTS users (
                 username TEXT PRIMARY KEY,
                 password_hash TEXT,

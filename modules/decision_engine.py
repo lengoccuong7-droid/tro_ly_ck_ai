@@ -35,7 +35,7 @@ def make_trading_decision(df: pd.DataFrame, ai_result: dict) -> dict:
     if buy_zone_low > buy_zone_high:
         buy_zone_low = buy_zone_high
 
-    buy_zone = f""{buy_zone_low:,.0f} - {buy_zone_high:,.0f}"
+    buy_zone = f"{buy_zone_low:,.0f} - {buy_zone_high:,.0f}"
 
     # Cắt lỗ siết chặt ở mức 5 - 6% từ giá hiện tại
     stop_loss = round(last_close * 0.95, -2)

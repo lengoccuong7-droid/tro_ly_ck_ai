@@ -30,8 +30,16 @@ def make_trading_decision(df: pd.DataFrame, ai_result: dict) -> dict:
     support_price = sr["support"]
     resistance_price = sr["resistance"]
 
+    # --- TỐT ƯU VÙNG MUA CHUẨN (CÓ KHÔNG GIAN THỞ BẰNG 0.5 * ATR) ---
     buy_zone_low = round(max(support_price, last_close - 1.5 * atr), 2)
-    buy_zone_high = round(last_close, 2)
+    
+    # Cận trên cộng thêm biên độ ATR ngắn hạn nhưng chặn lại không vượt quá Kháng cự
+    buy_zone_high = round(min(resistance_price, last_close + 0.5 * atr), 2)
+    
+    # Đảm bảo cận dưới không lớn hơn cận trên
+    if buy_zone_low > buy_zone_high:
+        buy_zone_low = round(buy_zone_high * 0.98, 2)
+
     buy_zone = f"{buy_zone_low:,.0f} - {buy_zone_high:,.0f}"
 
     confirm_price = round(last_close * 1.015, 2)

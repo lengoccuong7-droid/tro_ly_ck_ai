@@ -7,9 +7,8 @@ def make_trading_decision(df: pd.DataFrame, ai_result: dict) -> dict:
     last_close = float(last["close"])
     tech = evaluate_technical(df)
     sr = find_support_resistance(df)
-    
-    score = tech.get("score", 0)
-    risk_level = ai_result.get("risk_level", "TRUNG BÌNH")
+    score = tech["score"]
+    risk_level = ai_result["risk_level"]
     atr = float(last.get("ATR14", last_close * 0.02))
 
     if score >= 3 and risk_level != "CAO":
@@ -28,29 +27,30 @@ def make_trading_decision(df: pd.DataFrame, ai_result: dict) -> dict:
         decision = "BÁN"
         reason = "Tín hiệu kỹ thuật vi phạm ngưỡng an toàn, áp lực bán xả lớn."
 
-    # Lấy trực tiếp từ dict trả về của find_support_resistance
     support_price = sr["support"]
     resistance_price = sr["resistance"]
 
-    # --- TỐI ƯU VÙNG MUA CHUẨN (Làm tròn đến hàng trăm đồng: -2) ---
-    buy_zone_low = round(max(support_price, last_close - 1.5 * atr), -2)
-    buy_zone_high = round(min(resistance_price, last_close + 0.5 * atr), -2)
+    # --- TỐT ƯU VÙNG MUA CHUẨN (CÓ KHÔNG GIAN THỞ BẰNG 0.5 * ATR) ---
+    buy_zone_low = round(max(support_price, last_close - 1.5 * atr), 2)
     
+    # Cận trên cộng thêm biên độ ATR ngắn hạn nhưng chặn lại không vượt quá Kháng cự
+    buy_zone_high = round(min(resistance_price, last_close + 0.5 * atr), 2)
+    
+    # Đảm bảo cận dưới không lớn hơn cận trên
     if buy_zone_low > buy_zone_high:
-        buy_zone_low = round(buy_zone_high * 0.98, -2)
+        buy_zone_low = round(buy_zone_high * 0.98, 2)
 
     buy_zone = f"{buy_zone_low:,.0f} - {buy_zone_high:,.0f}"
 
-    # Trả về dạng số (float) chuẩn xác cho các module quản trị vốn / đặt lệnh phía sau
-    confirm_price = round(last_close * 1.015, -2)
-    target_price = round(max(resistance_price, last_close + 2.5 * atr), -2)
-    stop_loss = round(min(support_price * 0.97, last_close - 2.0 * atr), -2)
+    confirm_price = round(last_close * 1.015, 2)
+    target_price = round(max(resistance_price, last_close + 2.5 * atr), 2)
+    stop_loss = round(min(support_price * 0.97, last_close - 2.0 * atr), 2)
 
     return {
         "decision": decision,
         "reason": reason,
         "buy_zone": buy_zone,
-        "confirm_price": confirm_price,
-        "target_price": target_price,
-        "stop_loss": stop_loss,
+        "confirm_price": f"{confirm_price:,.0f}",
+        "target_price": f"{target_price:,.0f}",
+        "stop_loss": f"{stop_loss:,.0f}",
     }

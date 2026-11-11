@@ -19,6 +19,8 @@ from modules.technical_analysis import evaluate_technical
 from modules.money_flow import evaluate_money_flow
 from modules.support_resistance import find_support_resistance
 from modules.stock_scoring import score_description
+from modules.ai_analyzer import run_ai_analysis
+from modules.decision_engine import make_trading_decision
 from modules.database import save_analysis, get_recent_history
 
 
@@ -645,57 +647,48 @@ financial_metrics = {
 # =============================================================================
 
 @st.cache_data(show_spinner=False)
-def calculate_stock_analysis(data):
-    """
-    Phân tích một lần, dùng chung cho Tab 1 và Tab 2.
-    Không thay đổi công thức bên trong các module.
-    """
+def calculate_stock_analysis(data, symbol, ato_data=None, financial_metrics=None):
+    """Phan tich tap trung: tinh mot lan va dung chung cho TAB 1/TAB 2."""
+    df = add_indicators(data.copy())
 
-    df = data.copy()
+    ai_res = run_ai_analysis(
+        df=df,
+        symbol=symbol,
+        ato_data=ato_data,
+        financial_metrics=financial_metrics,
+    )
 
-    df = add_indicators(df)
+    decision_res = make_trading_decision(
+        df=df,
+        ai_result=ai_res,
+        capital_vnd=100_000_000,
+        risk_per_trade_pct=1.0,
+        max_allocation_pct=20.0,
+        price_multiplier=1_000.0,
+        lot_size=100,
+    )
 
     tech_res = evaluate_technical(df)
-
     flow_res = evaluate_money_flow(df)
-
     sr_res = find_support_resistance(df)
-
     last_close = float(df["close"].iloc[-1])
-
-    score = int(tech_res["score"])
-
-    decision = (
-        "MUA GOM"
-        if score >= 60
-        else (
-            "THEO DÕI"
-            if score >= 40
-            else "THẬN TRỌNG"
-        )
-    )
-
-    # Giữ nguyên công thức giao dịch hiện tại của app.
-    buy_zone = (
-        f"{last_close * 0.96:,.2f} - "
-        f"{last_close * 0.98:,.2f}"
-    )
-
-    target_price = f"{last_close * 1.10:,.2f}"
-
-    stop_loss = f"{last_close * 0.93:,.2f}"
 
     return {
         "df": df,
         "tech": tech_res,
         "flow": flow_res,
         "support_resistance": sr_res,
+        "ai": ai_res,
+        "decision_detail": decision_res,
         "last_close": last_close,
-        "score": score,
-        "decision": decision,
-        "buy_zone": buy_zone,
-        "target_price": target_price,
-        "stop_loss": stop_loss
+        # Luu diem quy doi 0-100 vao nhat ky de hien thi dung thang diem.
+        "score": decision_res["score_100"],
+        "technical_score_raw": decision_res["technical_score_raw"],
+        "decision": decision_res["decision"],
+        "buy_zone": decision_res["buy_zone"],
+        "target_price": decision_res["target_price"],
+        "stop_loss": decision_res["stop_loss"],
+        "confirm_price": decision_res["confirm_price"],
     }
 
 
@@ -705,7 +698,9 @@ analysis_error = None
 if df_raw is not None and not df_raw.empty:
 
     try:
-        analysis = calculate_stock_analysis(df_raw)
+        analysis = calculate_stock_analysis(
+            df_raw, symbol_input, ato_data, financial_metrics
+        )
 
     except Exception as error:
         analysis_error = str(error)
@@ -752,6 +747,9 @@ with main_tab1:
 
         last_close = analysis["last_close"]
         score = analysis["score"]
+        technical_score_raw = analysis["technical_score_raw"]
+        decision_detail = analysis["decision_detail"]
+        ai_res = analysis["ai"]
         decision = analysis["decision"]
 
         buy_zone = analysis["buy_zone"]
@@ -769,6 +767,27 @@ with main_tab1:
         m3.metric("GIÁ XÁC NHẬN", f"{last_close:,.2f}")
         m4.metric("CHỐT LỜI (TP)", target_price)
         m5.metric("CẮT LỖ (SL)", stop_loss)
+
+        st.info(
+            f"**Xu hướng:** {decision_detail['trend']} | "
+            f"**Động lượng:** {decision_detail['momentum']} | "
+            f"**Dòng tiền:** {decision_detail['flow_status']}"
+        )
+        st.write(f"**Lý do khuyến nghị:** {decision_detail['reason']}")
+        st.write(
+            f"**Hành động nếu đang nắm giữ:** {decision_detail['holding_action']}"
+        )
+        st.caption(
+            f"Tỷ lệ LN/RR tham khảo: {decision_detail['reward_risk']:.2f}R | "
+            f"Khối lượng tối đa theo quản trị rủi ro: "
+            f"{decision_detail['suggested_quantity']:,} cổ phiếu | "
+            f"Giá trị dự kiến: {decision_detail['estimated_position_value_vnd']:,.0f} VNĐ | "
+            f"Lỗ dự kiến tại stop: {decision_detail['estimated_loss_at_stop_vnd']:,.0f} VNĐ"
+        )
+        if decision_detail["warnings"]:
+            with st.expander("Cảnh báo và điều kiện cần kiểm tra"):
+                for warning in decision_detail["warnings"]:
+                    st.write(f"- {warning}")
 
         st.markdown("---")
 
@@ -938,12 +957,16 @@ with main_tab1:
             )
 
             st.metric(
-                "Điểm kỹ thuật",
+                "Điểm tổng hợp kỹ thuật",
                 f"{score}/100"
+            )
+            st.caption(
+                f"Điểm gốc của module kỹ thuật: {technical_score_raw:+d} / 6. "
+                "Điểm 0-100 là thang quy đổi, không phải xác suất tăng giá."
             )
 
             st.write(
-                f"**Đánh giá:** {score_description(score)}"
+                f"**Đánh giá:** {score_description(technical_score_raw)}"
             )
 
             st.write(
@@ -1003,11 +1026,11 @@ with main_tab1:
             )
 
             st.write(
-                f"- **Điểm kỹ thuật:** {score}/100"
+                f"- **Điểm tổng hợp kỹ thuật:** {score}/100 (điểm gốc {technical_score_raw:+d}/6)"
             )
 
             st.write(
-                f"- **Đánh giá:** {score_description(score)}"
+                f"- **Đánh giá:** {score_description(technical_score_raw)}"
             )
 
             st.write(
@@ -1045,74 +1068,59 @@ with main_tab1:
 
 with main_tab2:
 
-    st.subheader(
-        f"🗣️ THAM VẤN ĐẦU TƯ CHO MÃ {symbol_input}"
-    )
+    st.subheader(f"🗣️ THAM VẤN ĐẦU TƯ SWING CHO MÃ {symbol_input}")
 
     if df_raw is None or df_raw.empty:
-
-        st.warning(
-            "Vui lòng nạp dữ liệu ở thanh bên trái."
-        )
-
+        st.warning("Vui lòng nạp dữ liệu ở thanh bên trái.")
     elif analysis_error:
-
-        st.error(
-            f"Lỗi phân tích: {analysis_error}"
-        )
-
+        st.error(f"Lỗi phân tích: {analysis_error}")
     else:
+        detail = analysis["decision_detail"]
+        ai_res = analysis["ai"]
+        st.metric("KHUYẾN NGHỊ CHO VỊ THẾ MỚI", detail["decision"])
+        st.write(f"**Xu hướng:** {detail['trend']}")
+        st.write(f"**Động lượng:** {detail['momentum']}")
+        st.write(f"**Dòng tiền:** {detail['flow_status']}")
+        st.write(
+            f"**Điểm tổng hợp:** {detail['score_100']}/100 "
+            f"(điểm kỹ thuật gốc {detail['technical_score_raw']:+d}/6)."
+        )
+        st.caption("Điểm 0-100 là điểm quy đổi từ bộ chỉ báo, không phải xác suất sinh lời.")
 
-        last_close = analysis["last_close"]
-        score = analysis["score"]
-        decision = analysis["decision"]
+        st.markdown("### 1. Nếu CHƯA có cổ phiếu")
+        st.write(f"- **Vùng mua tham khảo:** {detail['buy_zone']}")
+        st.write(f"- **Giá hiện tại/giá xác nhận:** {detail['confirm_price']}")
+        st.write(f"- **Giá mục tiêu:** {detail['target_price']}")
+        st.write(f"- **Giá cắt lỗ:** {detail['stop_loss']}")
+        st.write(f"- **Tỷ lệ lợi nhuận/rủi ro:** {detail['reward_risk']:.2f}R")
+        st.write(f"- **Lý do:** {detail['reason']}")
 
-        buy_zone = analysis["buy_zone"]
-        target_price = analysis["target_price"]
-        stop_loss = analysis["stop_loss"]
+        st.markdown("### 2. Nếu ĐANG nắm giữ")
+        st.info(detail["holding_action"])
 
-        sr_res = analysis["support_resistance"]
-
-        st.info(
-            "### 📊 BẢNG THAM VẤN CHIẾN LƯỢC"
+        st.markdown("### 3. Quản trị vốn mẫu 100 triệu đồng")
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Khối lượng tối đa tham khảo", f"{detail['suggested_quantity']:,} cp")
+        c2.metric("Giá trị vị thế", f"{detail['estimated_position_value_vnd']:,.0f} đ")
+        c3.metric("Rủi ro tại stop", f"{detail['estimated_loss_at_stop_vnd']:,.0f} đ")
+        st.caption(
+            "Mô hình giả định giá trong file đang tính theo nghìn đồng/cổ phiếu, "
+            "lô giao dịch 100 cổ phiếu, rủi ro tối đa 1% NAV/lệnh và tỷ trọng tối đa 20% NAV. "
+            "Nếu dữ liệu giá là VND/cổ phiếu, cần đổi price_multiplier từ 1.000 thành 1."
         )
 
-        st.markdown(f"""
-**1. Đánh giá trạng thái chung**
-
-Mã **{symbol_input}** đang ở trạng thái **{decision}**.
-
-Điểm kỹ thuật: **{score}/100**.
-
-Giá đóng cửa gần nhất: **{last_close:,.2f}**.
-
-**2. Chiến lược cho nhà đầu tư chưa có hàng**
-
-- Theo dõi vùng giá tham khảo: **{buy_zone}**.
-- Không mua đuổi khi giá tăng mạnh.
-- Đối chiếu vùng mua với hỗ trợ và kháng cự trước khi đặt lệnh.
-
-**3. Chiến lược cho nhà đầu tư đang nắm giữ**
-
-- Theo dõi diễn biến giá và dòng tiền.
-- Mục tiêu chốt lời tham khảo: **{target_price}**.
-- Ngưỡng cắt lỗ tham khảo: **{stop_loss}**.
-
-**4. Các vùng kỹ thuật**
-
-- Hỗ trợ: **{sr_res.get("support", "N/A")}**.
-- Kháng cự: **{sr_res.get("resistance", "N/A")}**.
-
-**5. Lưu ý quản trị rủi ro**
-
-Các vùng giá trên được giữ theo công thức hiện tại của ứng dụng,
-không phải khuyến nghị mua bán chắc chắn. Cần kiểm tra thanh khoản,
-biên độ biến động và tỷ lệ lợi nhuận/rủi ro trước khi giao dịch.
-        """)
+        st.markdown("### 4. Cảnh báo và luận cứ")
+        for item in detail["warnings"]:
+            st.warning(item)
+        with st.expander("Xem các tín hiệu kỹ thuật chi tiết"):
+            for item in detail["technical_signals"]:
+                st.write(f"- {item}")
+            st.write(f"**ATO:** {ai_res['ato_summary']}")
+            st.write(f"**Tài chính:** {ai_res['fin_summary']}")
 
         st.warning(
-            "Đây là công cụ tham khảo. "
-            "Không có tín hiệu nào bảo đảm lợi nhuận."
+            "Đây là bộ lọc và kế hoạch giao dịch tham khảo, chưa được chứng minh hiệu quả "
+            "bằng backtest/out-of-sample. Không tự động đặt lệnh và không bảo đảm lợi nhuận."
         )
 
 

@@ -1,83 +1,128 @@
-import os
-import json
-import logging
+"""Phan tich tong hop cho he thong Swing.
+Khong tu tao du lieu: chi su dung cac cot va chi bao co trong DataFrame.
+"""
+from __future__ import annotations
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+import math
+import pandas as pd
 
-def run_ai_analysis(df, symbol, ato_data=None, financial_metrics=None):
-    """
-    Hàm gọi trực tiếp AI để phân tích dữ liệu chứng khoán thực chiến, sắc bén,
-    có lọc khoảng cách an toàn so với kháng cự.
-    """
-    api_key = os.getenv("GEMINI_API_KEY")
-    
-    if not api_key:
-        return {
-            "summary": "⚠️ Chưa thiết lập biến môi trường `GEMINI_API_KEY`. Vui lòng cấu hình API Key để kích hoạt phân tích AI sâu.",
-            "fin_summary": f"ROE: {financial_metrics.get('roe', 'N/A')}, P/E: {financial_metrics.get('pe', 'N/A')}",
-            "flow_summary": "Dữ liệu dòng tiền hoạt động bình thường.",
-            "counter_arguments": [
-                "Cần cấu hình API Key từ Google AI Studio.",
-                "Đảm bảo biến môi trường được thiết lập đúng trên hệ thống."
-            ]
-        }
-    
+from modules.money_flow import evaluate_money_flow
+from modules.technical_analysis import evaluate_technical
+from modules.support_resistance import find_support_resistance
+
+
+def _num(value, default=None):
     try:
-        from google import genai
-        client = genai.Client(api_key=api_key)
-        
-        last_row = df.iloc[-1]
-        
-        context_data = {
-            "symbol": symbol,
-            "date": str(last_row['date']) if 'date' in last_row else "N/A",
-            "close_price": float(last_row['close']) if 'close' in last_row else 0.0,
-            "volume": float(last_row['volume']) if 'volume' in last_row else 0.0,
-            "ma20": float(last_row['MA20']) if 'MA20' in last_row else "N/A",
-            "ma50": float(last_row['MA50']) if 'MA50' in last_row else "N/A",
-            "ato_data": ato_data or {},
-            "financial_metrics": financial_metrics or {}
-        }
-        
-        prompt = f"""
-        Bạn là một chuyên gia phân tích đầu tư chứng khoán thực chiến cực kỳ sắc bén và kỷ luật.
-        Hãy phân tích sắc sảo mã cổ phiếu **{symbol}** dựa trên dữ liệu định lượng thực tế:
+        if value is None or pd.isna(value):
+            return default
+        value = float(value)
+        return value if math.isfinite(value) else default
+    except (TypeError, ValueError):
+        return default
 
-        {json.dumps(context_data, ensure_ascii=False, indent=2)}
 
-        ---
-        Yêu cầu trả về bằng tiếng Việt, định dạng Markdown:
-        1. **Đánh giá xu hướng & Sức mạnh dòng tiền hiện tại**: Phân tích rõ phe mua hay phe bán đang chiếm ưu thế.
-        2. **Định giá & Sức khỏe tài chính**: Nhận định ngắn gọn dựa trên ROE, P/E (nếu có).
-        3. **Chiến lược giá & Cảnh báo bẫy giá (Bull/Bear Trap)**: Tuyệt đối không khuyến khích mua đuổi sát vùng kháng cự. Chỉ mở mua khi có chiết khấu an toàn về vùng hỗ trợ.
-        """
-        
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=prompt,
-        )
-        
-        ai_text = response.text
-        
-        return {
-            "summary": ai_text,
-            "fin_summary": f"ROE: {financial_metrics.get('roe', 'N/A')}% | P/E: {financial_metrics.get('pe', 'N/A')} | Nợ/VCSH: {financial_metrics.get('debt_equity', 'N/A')}",
-            "flow_summary": f"Khối lượng khớp lệnh gần nhất: {last_row.get('volume', 0):,.0f}, giá đóng cửa: {last_row.get('close', 0):,.2f}",
-            "counter_arguments": [
-                "⚠️ Tuyệt đối không mua đuổi khi giá đang áp sát vùng kháng cự mạnh.",
-                "🛡️ Luôn tuân thủ tuyệt đối nguyên tắc quản trị rủi ro và điểm cắt lỗ (Stop-loss)."
-            ]
-        }
-        
-    except Exception as e:
-        logger.error(f"Lỗi gọi trực tiếp AI: {e}")
-        return {
-            "summary": f"❌ Đã xảy ra lỗi trong quá trình kết nối tới AI: {str(e)}",
-            "fin_summary": "Không thể tổng hợp do lỗi kết nối.",
-            "flow_summary": "Không xác định.",
-            "counter_arguments": [
-                "Kiểm tra lại đường truyền internet.",
-                "Xác thực lại hiệu lực của Google Gemini API Key."
-            ]
-        }
+def run_ai_analysis(
+    df: pd.DataFrame,
+    symbol: str,
+    ato_data: dict | None = None,
+    financial_metrics: dict | None = None,
+) -> dict:
+    """Tong hop xu huong, dong luong, dong tien va canh bao."""
+    if df is None or df.empty or len(df) < 2:
+        raise ValueError("Can toi thieu 2 phien du lieu de phan tich.")
+
+    last = df.iloc[-1]
+    prev = df.iloc[-2]
+    close = _num(last.get("close"))
+    if close is None or close <= 0:
+        raise ValueError("Gia dong cua gan nhat khong hop le.")
+
+    tech = evaluate_technical(df)
+    flow = evaluate_money_flow(df)
+    sr = find_support_resistance(df)
+
+    ma20 = _num(last.get("MA20"))
+    ma50 = _num(last.get("MA50"))
+    ma200 = _num(last.get("MA200"))
+    ma50_prev = _num(df.iloc[-6].get("MA50")) if len(df) >= 6 else None
+    rsi = _num(last.get("RSI14"), 50.0)
+    macd_hist = _num(last.get("MACD_HIST"))
+    atr = _num(last.get("ATR14"), close * 0.02)
+    vol_ratio = _num(flow.get("vol_ratio_20"))
+
+    if ma20 is not None and ma50 is not None and close > ma20 > ma50:
+        trend = "TĂNG MẠNH" if ma50_prev is None or ma50 > ma50_prev else "TĂNG"
+    elif ma50 is not None and close > ma50:
+        trend = "TĂNG"
+    elif ma20 is not None and ma50 is not None and close < ma20 < ma50:
+        trend = "GIẢM"
+    elif ma50 is not None and close < ma50:
+        trend = "GIẢM / TÍCH LŨY"
+    else:
+        trend = "ĐI NGANG / CHƯA RÕ"
+
+    if rsi >= 55 and (macd_hist is None or macd_hist >= 0):
+        momentum = "MẠNH"
+    elif rsi < 45 or (macd_hist is not None and macd_hist < 0):
+        momentum = "YẾU"
+    else:
+        momentum = "TRUNG BÌNH"
+
+    warnings = []
+    if rsi >= 70:
+        warnings.append(f"RSI {rsi:.1f}: vùng quá mua, tránh mua đuổi.")
+    if atr and close > (ma20 or close) + 1.5 * atr:
+        warnings.append("Giá đang cách xa MA20 hơn 1,5 ATR: rủi ro mua đuổi.")
+    if _num(sr.get("dist_to_resistance_pct"), 999) < 2:
+        warnings.append("Kháng cự gần, dư địa tăng ngắn hạn bị hạn chế.")
+    if flow.get("flow_status", "").lower().startswith("tiêu cực"):
+        warnings.append("Dòng tiền/khối lượng đang xác nhận áp lực bán.")
+    if vol_ratio is not None and vol_ratio < 0.7:
+        warnings.append("Thanh khoản thấp hơn 70% trung bình 20 phiên.")
+    if not warnings:
+        warnings.append("Chưa phát hiện cảnh báo kỹ thuật nổi bật từ dữ liệu hiện có.")
+
+    ato_summary = "Chưa có dữ liệu ATO."
+    if isinstance(ato_data, dict):
+        ato_open = _num(ato_data.get("open"))
+        ato_volume = _num(ato_data.get("volume"))
+        if ato_open is not None and ato_open > 0:
+            gap = (ato_open / close - 1) * 100
+            ato_summary = f"Giá ATO {ato_open:,.2f}, gap {gap:+.2f}%"
+            if ato_volume is not None:
+                ato_summary += f", KL ATO {ato_volume:,.0f}"
+            if gap >= 1.5:
+                warnings.append("ATO gap tăng mạnh; cần chờ xác nhận, không mua đuổi đầu phiên.")
+            elif gap <= -1.5:
+                warnings.append("ATO gap giảm mạnh; cần đánh giá lại áp lực cung đầu phiên.")
+
+    fin_summary = "Chưa nhập dữ liệu tài chính cơ bản."
+    if isinstance(financial_metrics, dict):
+        valid = [f"{k}: {v}" for k, v in financial_metrics.items() if v is not None]
+        if valid:
+            fin_summary = " | ".join(valid)
+
+    score = int(tech.get("score", 0))
+    if score <= -3 or trend.startswith("GIẢM"):
+        risk_level = "CAO"
+    elif score >= 3 and rsi < 70 and not flow.get("flow_status", "").lower().startswith("tiêu cực"):
+        risk_level = "THẤP"
+    else:
+        risk_level = "TRUNG BÌNH"
+
+    return {
+        "symbol": str(symbol).upper(),
+        "trend": trend,
+        "momentum": momentum,
+        "flow_summary": flow.get("flow_status", "Chưa xác định"),
+        "vol_ratio_20": vol_ratio,
+        "rsi14": rsi,
+        "atr14": atr,
+        "risk_level": risk_level,
+        "counter_arguments": warnings,
+        "ato_summary": ato_summary,
+        "fin_summary": fin_summary,
+        "technical_score_raw": score,
+        "technical_signals": tech.get("signals", []),
+        "support_resistance": sr,
+    }

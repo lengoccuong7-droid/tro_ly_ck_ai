@@ -3,7 +3,6 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-import hashlib
 import sqlite3
 import datetime
 
@@ -16,9 +15,10 @@ from modules.stock_scoring import score_description
 from modules.ai_analyzer import run_ai_analysis
 from modules.decision_engine import make_trading_decision
 from modules.database import save_analysis, get_recent_history
+from modules.cache_manager import CacheManager
 
 # -----------------------------------------------------------------------------
-# 1. CẤU HÌNH GIAO DIỆN & KHỞI TẠO CƠ SỞ DỮ LIỆU CHUẨN (USERS & HISTORY)
+# 1. CẤU HÌNH GIAO DIỆN & KHỞI TẠO CƠ SỞ DỮ LIỆU
 # -----------------------------------------------------------------------------
 st.set_page_config(
     page_title=f"{APP_NAME} ULTIMATE PRO", 
@@ -27,11 +27,10 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Hàm khởi tạo database chuẩn bảo mật đa người dùng
+# Khởi tạo database nhật ký phân tích
 def init_system_db():
     with sqlite3.connect(DB_PATH, check_same_thread=False) as conn:
         cursor = conn.cursor()
-        # Bảng lịch sử phân tích
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS analysis_history (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -46,148 +45,25 @@ def init_system_db():
                 summary TEXT
             )
         ''')
-        
-        # Bảng quản lý người dùng & phân quyền (Admin / User)
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS users (
-                username TEXT PRIMARY KEY,
-                password_hash TEXT,
-                role TEXT,
-                recovery_code TEXT
-            )
-        ''')
-        
-        # Tạo sẵn tài khoản Admin mặc định (Pass: 123456, Mã khôi phục: admin)
-        cursor.execute("SELECT COUNT(*) FROM users WHERE username = 'admin'")
-        if cursor.fetchone()[0] == 0:
-            admin_pass_hash = hashlib.sha256(str.encode("123456")).hexdigest()
-            cursor.execute("INSERT INTO users (username, password_hash, role, recovery_code) VALUES (?, ?, ?, ?)", 
-                           ("admin", admin_pass_hash, "admin", "admin"))
         conn.commit()
 
 init_system_db()
 
-if "logged_in_user" not in st.session_state:
-    st.session_state["logged_in_user"] = None
-if "user_role" not in st.session_state:
-    st.session_state["user_role"] = "user"
+# Khởi tạo Cache và Danh mục đầu tư mặc định trong Session State
+if "cache_mgr" not in st.session_state:
+    st.session_state["cache_mgr"] = CacheManager(default_ttl=900)
 
-def init_user_data(username):
-    if f"portfolio_{username}" not in st.session_state:
-        st.session_state[f"portfolio_{username}"] = pd.DataFrame([
-            {"Mã": "HPG", "Khối Lượng": 10000, "Giá Vốn": 25.0, "Giá Hiện Tại": 27.5},
-            {"Mã": "FPT", "Khối Lượng": 5000, "Giá Vốn": 49.5, "Giá Hiện Tại": 51.0}
-        ])
+if "portfolio_user" not in st.session_state:
+    st.session_state["portfolio_user"] = pd.DataFrame([
+        {"Mã": "HPG", "Khối Lượng": 10000, "Giá Vốn": 25.0, "Giá Hiện Tại": 27.5},
+        {"Mã": "FPT", "Khối Lượng": 5000, "Giá Vốn": 49.5, "Giá Hiện Tại": 51.0}
+    ])
 
 # -----------------------------------------------------------------------------
-# 2. XÁC THỰC ĐĂNG NHẬP / ĐĂNG KÝ & QUÊN MẬT KHẨU (LƯU TRỰC TIẾP VÀO SQLITE)
+# 2. GIAO DIỆN CHÍNH (VÀO THẲNG KHÔNG CẦN ĐĂNG NHẬP)
 # -----------------------------------------------------------------------------
-if st.session_state["logged_in_user"] is None:
-    st.title(f"📈 {APP_NAME} (v{APP_VERSION} ULTIMATE PRO)")
-    st.caption("Hệ thống Trợ lý Phân tích Chứng khoán Thực chiến - Đăng nhập bảo mật đa người dùng")
-    
-    tab_login, tab_reg, tab_forgot = st.tabs(["🔑 Đăng Nhập", "📝 Đăng Ký Tài Khoản", "🔄 Quên Mật Khẩu"])
-    
-    # 1. Tab Đăng nhập
-    with tab_login:
-        l_user = st.text_input("Tên tài khoản", key="l_u").strip()
-        l_pass = st.text_input("Mật khẩu", type="password", key="l_p")
-        if st.button("🚀 Đăng Nhập Hệ Thống", use_container_width=True):
-            if not l_user or not l_pass:
-                st.warning("⚠️ Vui lòng nhập đầy đủ tên tài khoản và mật khẩu!")
-            else:
-                pass_hash = hashlib.sha256(str.encode(l_pass)).hexdigest()
-                try:
-                    with sqlite3.connect(DB_PATH, check_same_thread=False) as conn:
-                        cursor = conn.cursor()
-                        cursor.execute("SELECT role, password_hash FROM users WHERE username = ?", (l_user,))
-                        user_row = cursor.fetchone()
-                        
-                    if user_row and user_row[1] == pass_hash:
-                        st.session_state["logged_in_user"] = l_user
-                        st.session_state["user_role"] = user_row[0]
-                        init_user_data(l_user)
-                        st.success(f"🎉 Chào mừng sếp {l_user} trở lại!")
-                        st.rerun()
-                    else:
-                        st.error("❌ Sai tên đăng nhập hoặc mật khẩu!")
-                except Exception as e:
-                    st.error(f"Lỗi kết nối cơ sở dữ liệu: {e}")
-
-    # 2. Tab Đăng ký tài khoản cho khách
-    with tab_reg:
-        r_user = st.text_input("Chọn tên đăng ký", key="r_u").strip()
-        r_pass = st.text_input("Tạo mật khẩu", type="password", key="r_p")
-        r_pass_c = st.text_input("Xác nhận mật khẩu", type="password", key="r_pc")
-        r_code = st.text_input("Mã khôi phục bí mật (Dùng khi quên mật khẩu):", type="password", key="r_c")
-        
-        if st.button("✨ Đăng Ký Tài Khoản Mới", use_container_width=True):
-            if not r_user or not r_pass or not r_code:
-                st.warning("⚠️ Vui lòng điền đầy đủ tất cả các thông tin!")
-            elif r_pass != r_pass_c:
-                st.error("❌ Mật khẩu xác nhận không khớp!")
-            else:
-                try:
-                    with sqlite3.connect(DB_PATH, check_same_thread=False) as conn:
-                        cursor = conn.cursor()
-                        cursor.execute("SELECT COUNT(*) FROM users WHERE username = ?", (r_user,))
-                        if cursor.fetchone()[0] > 0:
-                            st.error("❌ Tên tài khoản này đã tồn tại, vui lòng chọn tên khác!")
-                        else:
-                            new_pass_hash = hashlib.sha256(str.encode(r_pass)).hexdigest()
-                            cursor.execute("INSERT INTO users (username, password_hash, role, recovery_code) VALUES (?, ?, ?, ?)",
-                                           (r_user, new_pass_hash, "user", r_code))
-                            conn.commit()
-                            st.success("✅ Đăng ký thành công! Vui lòng chuyển sang tab Đăng Nhập để vào hệ thống.")
-                except Exception as e:
-                    st.error(f"Lỗi đăng ký: {e}")
-
-    # 3. Tab Quên mật khẩu / Lấy lại mật khẩu
-    with tab_forgot:
-        st.info("💡 Nhập tên tài khoản và mã khôi phục bí mật đã đăng ký để đặt lại mật khẩu mới.")
-        f_user = st.text_input("Tên tài khoản cần lấy lại mật khẩu", key="f_u").strip()
-        f_code = st.text_input("Mã khôi phục bí mật", type="password", key="f_c")
-        f_new_pass = st.text_input("Mật khẩu mới", type="password", key="f_np")
-        
-        if st.button("🔄 Đặt Lại Mật Khẩu Mới", use_container_width=True):
-            if not f_user or not f_code or not f_new_pass:
-                st.warning("⚠️ Vui lòng điền đầy đủ thông tin!")
-            else:
-                try:
-                    with sqlite3.connect(DB_PATH, check_same_thread=False) as conn:
-                        cursor = conn.cursor()
-                        cursor.execute("SELECT recovery_code FROM users WHERE username = ?", (f_user,))
-                        row = cursor.fetchone()
-                        
-                    if row and row[0] == f_code:
-                        new_hash = hashlib.sha256(str.encode(f_new_pass)).hexdigest()
-                        with sqlite3.connect(DB_PATH, check_same_thread=False) as conn:
-                            cursor = conn.cursor()
-                            cursor.execute("UPDATE users SET password_hash = ? WHERE username = ?", (new_hash, f_user))
-                            conn.commit()
-                        st.success("✅ Đặt lại mật khẩu thành công! Hãy sang tab Đăng Nhập để truy cập.")
-                    else:
-                        st.error("❌ Tên tài khoản hoặc Mã khôi phục không chính xác!")
-                except Exception as e:
-                    st.error(f"Lỗi khôi phục: {e}")
-                    
-    st.stop()
-
-# -----------------------------------------------------------------------------
-# 3. GIAO DIỆN CHÍNH SAU KHI ĐĂNG NHẬP
-# -----------------------------------------------------------------------------
-current_user = st.session_state["logged_in_user"]
-init_user_data(current_user)
-user_portfolio = st.session_state[f"portfolio_{current_user}"]
-
-h_col1, h_col2 = st.columns([4, 1])
-with h_col1:
-    st.title(f"📈 {APP_NAME} (v{APP_VERSION} ULTIMATE PRO)")
-    st.caption(f"Tài khoản đang hoạt động: **{current_user}** ({'Admin' if st.session_state.get('user_role')=='admin' else 'Khách'}) | Mô hình Cố vấn Thực chiến")
-with h_col2:
-    if st.button("🚪 Đăng Xuất", use_container_width=True):
-        st.session_state["logged_in_user"] = None
-        st.rerun()
+st.title(f"📈 {APP_NAME} (v{APP_VERSION} ULTIMATE PRO)")
+st.caption("Hệ thống Trợ lý Phân tích Chứng khoán Thực chiến - AI Powered & Định lượng Chuyên Sâu")
 
 # -----------------------------------------------------------------------------
 # SIDEBAR: CỔNG NẠP DỮ LIỆU FILE & XỬ LÝ THÔNG MINH
@@ -309,7 +185,17 @@ with main_tab1:
     else:
         try:
             df = add_indicators(df_raw)
-            ai_res = run_ai_analysis(df, symbol_input, ato_data=ato_data, financial_metrics=financial_metrics)
+            
+            # Kiểm tra cache trước khi gọi AI để tối ưu tốc độ và chi phí
+            cache_key = f"ai_analysis_{symbol_input}_{df['close'].iloc[-1]}"
+            cached_ai_res = st.session_state["cache_mgr"].get(cache_key)
+            
+            if cached_ai_res:
+                ai_res = cached_ai_res
+            else:
+                ai_res = run_ai_analysis(df, symbol_input, ato_data=ato_data, financial_metrics=financial_metrics)
+                st.session_state["cache_mgr"].set(cache_key, ai_res)
+
             decision_res = make_trading_decision(df, ai_res)
             tech_res = evaluate_technical(df)
             sr_res = find_support_resistance(df)
@@ -326,7 +212,7 @@ with main_tab1:
             st.markdown("---")
             col_save1, col_save2 = st.columns([3, 1])
             with col_save1:
-                st.info(f"💡 Sếp có thể bấm nút bên phải để lưu kết quả phân tích mã **{symbol_input}** này vào Nhật ký (Tab 4).")
+                st.info(f"💡 Bạn có thể bấm nút bên phải để lưu kết quả phân tích mã **{symbol_input}** này vào Nhật ký (Tab 4).")
             with col_save2:
                 if st.button("💾 Lưu Phân Tích Này", use_container_width=True, type="primary"):
                     try:
@@ -379,7 +265,7 @@ with main_tab2:
     st.subheader(f"🗣️ KỊCH BẢN LỜI KHUYÊN TỪ CHUYÊN GIA CHO MÃ {symbol_input}")
     
     if df_raw is None or df_raw.empty:
-        st.warning("⚠️ Vui lòng nạp tệp dữ liệu ở thanh bên trái để Thầy có cơ sở phân tích và đưa ra lời khuyên chiến lược.")
+        st.warning("⚠️ Vui lòng nạp tệp dữ liệu ở thanh bên trái để có cơ sở phân tích và đưa ra lời khuyên chiến lược.")
     else:
         try:
             df = add_indicators(df_raw)
@@ -388,15 +274,15 @@ with main_tab2:
 
             st.markdown(f"""
             <div style="background-color: #1e293b; color: #f8fafc; padding: 1.8rem; border-radius: 12px; border-left: 6px solid #3b82f6; margin-top: 1rem;">
-                <div style="font-weight: bold; font-size: 1.3rem; color: #60a5fa; margin-bottom: 1rem;">🎯 LỜI THẦY DẶN TRÒ (GÓC NHÌN CHUYÊN GIA THỰC CHIẾN)</div>
+                <div style="font-weight: bold; font-size: 1.3rem; color: #60a5fa; margin-bottom: 1rem;">🎯 LỜI KHUYÊN CHIẾN LƯỢC (GÓC NHÌN CHUYÊN GIA THỰC CHIẾN)</div>
                 <div style="line-height: 1.8; font-size: 1.05rem;">
-                    "Trò chú ý! Đối với mã <b>{symbol_input}</b>, hệ thống xác nhận trạng thái là: <b style="color: #38bdf8;">{decision_res['decision']}</b>.<br/><br/>
+                    "Đối với mã <b>{symbol_input}</b>, hệ thống xác nhận trạng thái là: <b style="color: #38bdf8;">{decision_res['decision']}</b>.<br/><br/>
                     <b>1. Đánh giá tổng quan cốt lõi:</b> {ai_res['summary']}<br/><br/>
                     <b>2. Chiến lược hành động chi tiết:</b><br/>
-                    &nbsp;&nbsp;&nbsp;&nbsp;🎯 <b>Dành cho TRÒ CHƯA CÓ HÀNG:</b><br/>
+                    &nbsp;&nbsp;&nbsp;&nbsp;🎯 <b>Dành cho NHÀ ĐẦU TƯ CHƯA CÓ HÀNG:</b><br/>
                     &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- Tuyệt đối không mua đuổi hưng phấn khi giá xanh mạnh.<br/>
                     &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- Kiên nhẫn chờ nhịp chỉnh về đúng vùng mua chuẩn <code style="color: #facc15; font-size: 1.1rem;">{decision_res['buy_zone']}</code> để lấy vị thế thăm dò 30-50%.<br/><br/>
-                    &nbsp;&nbsp;&nbsp;&nbsp;🛡️ <b>Dành cho TRÒ ĐÃ CÓ HÀNG:</b><br/>
+                    &nbsp;&nbsp;&nbsp;&nbsp;🛡️ <b>Dành cho NHÀ ĐẦU TƯ ĐÃ CÓ HÀNG:</b><br/>
                     &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- Tiếp tục nắm giữ gồng lãi theo xu hướng nếu dòng tiền khỏe.<br/>
                     &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- Canh chốt lời từng phần khi tiến sát mục tiêu <code style="color: #facc15; font-size: 1.1rem;">{decision_res['target_price']}</code>.<br/>
                     &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- Tuân thủ tuyệt đối kỷ luật cắt lỗ hạ tỷ trọng ngay lập tức nếu thủng vùng <code style="color: #f87171; font-size: 1.1rem;">{decision_res['stop_loss']}</code>!"
@@ -404,17 +290,17 @@ with main_tab2:
             </div>
             """, unsafe_allow_html=True)
         except Exception as e:
-            st.error(f"⚠️ Lỗi hiển thị kịch bản Thầy - Trò: {e}")
+            st.error(f"⚠️ Lỗi hiển thị kịch bản: {e}")
 
 # --- TAB 3: QUẢN TRỊ VỐN & NAV ---
 with main_tab3:
-    st.subheader(f"💼 QUẢN TRỊ VỐN & DÒNG TIỀN TƯƠNG TÁC ({current_user})")
-    st.caption("👇 Trò có thể thêm bớt mã, chỉnh sửa khối lượng, giá vốn trực tiếp trên bảng bên dưới như Excel:")
+    st.subheader("💼 QUẢN TRỊ VỐN & DÒNG TIỀN DANH MỤC")
+    st.caption("👇 Bạn có thể thêm bớt mã, chỉnh sửa khối lượng, giá vốn trực tiếp trên bảng bên dưới như Excel:")
     
-    edited_portfolio = st.data_editor(user_portfolio, num_rows="dynamic", key="pf_editor_main", use_container_width=True)
+    edited_portfolio = st.data_editor(st.session_state["portfolio_user"], num_rows="dynamic", key="pf_editor_main", use_container_width=True)
     
     if st.button("⚡ Lưu & Cập Nhật Dòng Tiền Danh Mục", use_container_width=True):
-        st.session_state[f"portfolio_{current_user}"] = edited_portfolio
+        st.session_state["portfolio_user"] = edited_portfolio
         st.success("Đã cập nhật danh mục vốn và dòng tiền thành công!")
         st.rerun()
 
@@ -448,7 +334,7 @@ with main_tab3:
             "Lãi/Lỗ (VNĐ)": "{:,.0f}", "Lãi/Lỗ (%)": "{:.2f}%"
         }), use_container_width=True)
 
-# --- TAB 4: LỊCH SỬ & QUẢN LÝ MÃ (GỌN GÀNG & XÓA TOÀN BỘ) ---
+# --- TAB 4: LỊCH SỬ & QUẢN LÝ MÃ ---
 with main_tab4:
     st.subheader("📜 Nhật Ký & Quản Lý Lịch Sử Phân Tích")
     st.caption("Tra cứu lại toàn bộ lịch sử phân tích đã lưu trong hệ thống:")
@@ -459,22 +345,6 @@ with main_tab4:
     try:
         with sqlite3.connect(DB_PATH, check_same_thread=False) as conn:
             cursor = conn.cursor()
-            
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS analysis_history (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    symbol TEXT,
-                    timestamp TEXT,
-                    last_close REAL,
-                    score INTEGER,
-                    decision TEXT,
-                    buy_zone TEXT,
-                    target_price TEXT,
-                    stop_loss TEXT,
-                    summary TEXT
-                )
-            ''')
-            
             cursor.execute("PRAGMA table_info(analysis_history)")
             cols = [col[1] for col in cursor.fetchall()]
             
@@ -539,4 +409,4 @@ with main_tab4:
         st.dataframe(hist_df, hide_index=True, use_container_width=True)
         
     else:
-        st.info("Chưa có lịch sử phân tích nào được ghi nhận. Sếp hãy sang Tab 1 bấm nút 'Lưu Phân Tích Này' để ghi dữ liệu mới nhé!")
+        st.info("Chưa có lịch sử phân tích nào được ghi nhận. Bạn hãy sang Tab 1 bấm nút 'Lưu Phân Tích Này' để ghi dữ liệu mới nhé!")

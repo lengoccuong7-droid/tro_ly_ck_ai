@@ -1,78 +1,71 @@
-import pandas as pd
-from modules.money_flow import evaluate_money_flow
-from modules.technical_analysis import evaluate_technical
-from modules.support_resistance import find_support_resistance
+import os
+import json
+import logging
 
-def run_ai_analysis(df: pd.DataFrame, symbol: str, ato_data: dict = None, financial_metrics: dict = None) -> dict:
-    """
-    Phân tích AI chuẩn xác. Nếu thiếu dữ liệu tuyệt đối không gán số 0 hay giả lập.
-    """
-    if df is None or df.empty or len(df) < 3:
-        return None
+# Cấu hình logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-    last = df.iloc[-1]
-    prev = df.iloc[-2]
-    last_close = float(last["close"])
-    
-    tech = evaluate_technical(df)
-    flow = evaluate_money_flow(df)
-    sr = find_support_resistance(df)
-    
-    rsi = float(last.get("RSI14", 50))
-    vol_ratio = flow.get("vol_ratio_20", 1.0)
-    
-    trend = "Tăng" if last_close > last.get("MA50", last_close) else "Giảm / Tích lũy"
-    momentum = "Mạnh" if rsi > 55 else ("Yếu" if rsi < 45 else "Trung bình")
-    
-    counter_arguments = []
-    if last_close > prev["close"] and vol_ratio and vol_ratio < 0.8:
-        counter_arguments.append("CẢNH BÁO BULL-TRAP: Giá tăng nhưng thanh khoản suy yếu (Tăng thiếu cầu).")
-    if rsi > 70:
-        counter_arguments.append("CẢNH BÁO GIÁ QUÁ CAO: RSI vượt 70, áp lực chốt lời ngắn hạn có thể gia tăng.")
-    if sr.get("dist_to_resistance_pct", 99) < 2.0:
-        counter_arguments.append(f"CẶP KHÁNG CỰ GẦN: Giá chỉ cách kháng cự mạnh {sr['resistance']} ({sr['dist_to_resistance_pct']}%), dư địa tăng ngắn hạn hẹp.")
-    if rsi < 30 and vol_ratio and vol_ratio > 1.3:
-        counter_arguments.append("TÍN HIỆU TÍCH CỰC ẨN: Quá bán kèm vol bùng nổ - Dấu hiệu dòng tiền bắt đáy (Spring/Accumulation).")
-
-    # Xử lý thông tin ATO
-    ato_summary = "Chưa có dữ liệu ATO đầu phiên."
-    if ato_data and ato_data.get("open") is not None and ato_data.get("volume") is not None:
-        ato_open = ato_data["open"]
-        ato_vol = ato_data["volume"]
-        gap_pct = ((ato_open - last_close) / last_close) * 100
-        ato_summary = f"ATO Mở cửa: {ato_open:,.2f} ({gap_pct:+.2f}%), Khối lượng ATO: {ato_vol:,.0f}"
-        if gap_pct > 1.5:
-            counter_arguments.append(f"ATO TÍCH CỰC: Mở cửa tạo Gap tăng {gap_pct:+.2f}% kèm dòng tiền đầu phiên.")
-        elif gap_pct < -1.5:
-            counter_arguments.append(f"ATO TIÊU CỰC: Mở cửa sụt giảm {gap_pct:+.2f}%, áp lực bán gia tăng từ đầu phiên.")
-    
-    if not counter_arguments:
-        counter_arguments.append("Chưa phát hiện mâu thuẫn bất thường giữa giá và khối lượng.")
+class AIAnalyzer:
+    def __init__(self, api_key: str = None):
+        """
+        Khởi tạo AI Analyzer.
+        Lấy API key từ tham số hoặc biến môi trường GEMINI_API_KEY.
+        """
+        self.api_key = api_key or os.getenv("GEMINI_API_KEY")
+        self.client = None
         
-    if tech["score"] < -2 or rsi > 75:
-        risk_level = "CAO"
-    elif tech["score"] >= 2 and rsi < 65:
-        risk_level = "THẤP"
-    else:
-        risk_level = "TRUNG BÌNH"
-        
-    summary_text = (
-        f"Mã {symbol} hiện ở xu hướng {trend} với động lượng {momentum}. "
-        f"Dòng tiền: {flow['flow_status']}. {ato_summary}. Rủi ro tổng quan: {risk_level}."
-    )
-    
-    # Xử lý thông tin chỉ số tài chính cơ bản để khớp với app.py
-    fin_summary = "Chưa có dữ liệu tài chính chi tiết."
-    if financial_metrics and isinstance(financial_metrics, dict):
-        fin_summary = ", ".join([f"{k}: {v}" for k, v in financial_metrics.items()])
+        if self.api_key:
+            try:
+                # Khởi tạo SDK Google GenAI (Gemini)
+                from google import genai
+                self.client = genai.Client(api_key=self.api_key)
+            except Exception as e:
+                logger.error(f"Lỗi khi khởi tạo Google GenAI Client: {e}")
 
-    return {
-        "trend": trend,
-        "momentum": momentum,
-        "flow_summary": flow['flow_status'],
-        "ato_summary": ato_summary,
-        "counter_arguments": counter_arguments,
-        "risk_level": risk_level,
-        "summary": summary_text,
-        "fin_summary": fin_summary
-    }
+    def analyze_stock_comprehensive(self, symbol: str, indicator_data: dict, money_flow_data: dict, score_data: dict, sr_data: dict = None) -> str:
+        """
+        Tổng hợp dữ liệu định lượng từ các module trong app và gửi câu lệnh tới AI.
+        """
+        # Nếu chưa cấu hình API Key, trả về thông báo hướng dẫn
+        if not self.client:
+            return (
+                "⚠️ **Chưa cấu hình API Key cho AI.**\n\n"
+                "Vui lòng thiết lập biến môi trường `GEMINI_API_KEY` hoặc truyền `api_key` "
+                "vào khởi tạo `AIAnalyzer` để kích hoạt tính năng Siêu Trí Tuệ."
+            )
+
+        # Đóng gói ngữ cảnh chi tiết cho AI
+        prompt = f"""
+        Bạn là một chuyên gia phân tích đầu tư tài chính và chứng khoán hàng đầu.
+        Hãy đưa ra nhận định chuyên sâu và dễ hiểu cho mã cổ phiếu **{symbol}** dựa trên các dữ liệu định lượng thực tế được trích xuất từ hệ thống bên dưới:
+
+        1. CHỈ BÁO KỸ THUẬT (Technical Indicators):
+        {json.dumps(indicator_data, ensure_ascii=False, indent=2)}
+
+        2. DÒNG TIỀN & THOÁT KHỎI THỊ TRƯỜNG (Money Flow):
+        {json.dumps(money_flow_data, ensure_ascii=False, indent=2)}
+
+        3. ĐIỂM SỐ CỔ PHIẾU (Stock Scoring):
+        {json.dumps(score_data, ensure_ascii=False, indent=2)}
+
+        4. VÙNG HỖ TRỢ & KHÁNG CỰ (Support / Resistance):
+        {json.dumps(sr_data or {}, ensure_ascii=False, indent=2)}
+
+        ---
+        YÊU CẦU TRẢ LỜI (Trình bày bằng tiếng Việt, chuẩn định dạng Markdown):
+        - **1. Tổng quan xu hướng:** Xu hướng hiện tại (Ngắn/Trung hạn) và tín hiệu kỹ thuật nổi bật.
+        - **2. Đánh giá Dòng tiền & Điểm số:** Phân tích xem dòng tiền lớn đang vào hay ra, điểm số định lượng phản ánh điều gì.
+        - **3. Khuyến nghị hành động:** Đưa ra lời khuyên cụ thể (Mua gom / Mua gia tăng / Nắm giữ / Bán hạ tỷ trọng / Theo dõi) kèm theo các vùng giá kích hoạt (Entry, Stop-loss, Target).
+        """
+
+        try:
+            # Gọi mô hình Gemini mới nhất
+            response = self.client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=prompt,
+            )
+            return response.text
+        except Exception as e:
+            logger.error(f"Lỗi khi gọi API AI: {e}")
+            return f"❌ **Đã xảy ra lỗi trong quá trình AI phân tích:** {str(e)}"

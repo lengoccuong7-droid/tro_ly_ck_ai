@@ -20,7 +20,14 @@ from modules.money_flow import evaluate_money_flow
 from modules.support_resistance import find_support_resistance
 from modules.stock_scoring import score_description
 from modules.ai_analyzer import run_ai_analysis
-from modules.decision_engine import make_trading_decision
+import inspect
+import modules.decision_engine as decision_module
+
+st.sidebar.write("DEBUG MODULE:", decision_module.__file__)
+st.sidebar.write(
+    "DEBUG PARAMETERS:",
+    list(inspect.signature(make_trading_decision).parameters.keys())
+)
 from modules.database import save_analysis, get_recent_history
 
 

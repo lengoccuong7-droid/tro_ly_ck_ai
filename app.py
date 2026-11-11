@@ -1,5 +1,21 @@
 
 import streamlit as st
+import inspect
+import modules.decision_engine as decision_module
+
+st.sidebar.write(
+    "DEBUG MODULE:",
+    decision_module.__file__
+)
+
+st.sidebar.write(
+    "DEBUG PARAMETERS:",
+    list(
+        inspect.signature(
+            decision_module.make_trading_decision
+        ).parameters.keys()
+    )
+)
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go

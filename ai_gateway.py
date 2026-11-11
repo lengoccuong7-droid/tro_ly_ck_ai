@@ -4,12 +4,11 @@ import os
 import google.generativeai as genai
 
 # Khởi tạo ứng dụng FastAPI làm lớp Middleware
-app = FastAPI(title="AI Intelligence Layer cho App Chứng Khoán")
+app = FastAPI(title="AI Intelligence Layer cho App Chứng import google.generativeai as genai
+import streamlit as st
 
-# Cấu hình API Key cho Gemini (lấy từ biến môi trường)
-# genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-genai.configure(api_key="YOUR_GEMINI_API_KEY") # Thay bằng key của bạn
-
+# Lấy key từ cấu hình ẩn của Streamlit Cloud
+genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 # Khái báo cấu trúc dữ liệu đầu vào từ phía Frontend/Người dùng
 class UserRequest(BaseModel):
     user_input: str  # Ví dụ: "Mua giúp tôi 100 cổ phiếu VCB giá 85" hoặc "Kiểm tra rủi ro danh mục"

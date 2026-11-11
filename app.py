@@ -60,7 +60,7 @@ if "portfolio_user" not in st.session_state:
     ])
 
 # -----------------------------------------------------------------------------
-# 2. GIAO DIỆN CHÍNH (VÀO THẲNG KHÔNG CẦN ĐĂNG NHẬP)
+# 2. GIAO DIỆN CHÍNH
 # -----------------------------------------------------------------------------
 st.title(f"📈 {APP_NAME} (v{APP_VERSION} ULTIMATE PRO)")
 st.caption("Hệ thống Trợ lý Phân tích Chứng khoán Thực chiến - AI Powered & Định lượng Chuyên Sâu")
@@ -186,17 +186,7 @@ with main_tab1:
         try:
             df = add_indicators(df_raw)
             
-            # Kiểm tra cache trước khi gọi AI để tối ưu tốc độ và chi phí
-            cache_key = f"ai_analysis_{symbol_input}_{df['close'].iloc[-1]}"
-            cached_ai_res = st.session_state["cache_mgr"].get(cache_key)
-            
-            if cached_ai_res:
-                ai_res = cached_ai_res
-            else:
-                ai_res = run_ai_analysis(df, symbol_input, ato_data=ato_data, financial_metrics=financial_metrics)
-                st.session_state["cache_mgr"].set(cache_key, ai_res)
-
-            decision_res = make_trading_decision(df, ai_res)
+            decision_res = make_trading_decision(df, {"summary": ""})
             tech_res = evaluate_technical(df)
             sr_res = find_support_resistance(df)
 
@@ -210,12 +200,43 @@ with main_tab1:
             m5.metric("CẮT LỖ (SL)", decision_res["stop_loss"])
 
             st.markdown("---")
+            
+            # -----------------------------------------------------------------------------
+            # NÚT GỌI TRỰC TIẾP AI PHÂN TÍCH CHO MÃ ĐANG CHỌN
+            # -----------------------------------------------------------------------------
+            col_btn1, col_btn2 = st.columns([2, 4])
+            with col_btn1:
+                if st.button(f"🤖 Gọi Trực Tiếp AI Phân Tích [{symbol_input}]", use_container_width=True, type="primary"):
+                    with st.spinner(f"Đang kết nối trực tiếp với Siêu Trí Tuệ để phân tích mã {symbol_input}..."):
+                        # Gọi trực tiếp module AI analyzer
+                        direct_ai_result = run_ai_analysis(
+                            df=df, 
+                            symbol=symbol_input, 
+                            ato_data=ato_data, 
+                            financial_metrics=financial_metrics
+                        )
+                        st.session_state[f"ai_result_{symbol_input}"] = direct_ai_result
+
+            # Hiển thị kết quả gọi trực tiếp ngay bên dưới nếu đã có trong session
+            if f"ai_result_{symbol_input}" in st.session_state:
+                st.success(f"✨ Kết quả phân tích trực tiếp từ AI cho mã **{symbol_input}**:")
+                res_data = st.session_state[f"ai_result_{symbol_input}"]
+                st.markdown(res_data.get("summary", "Không có nội dung."))
+                with st.expander("📌 Xem chi tiết thông số tổng hợp"):
+                    st.write(f"- **Tóm tắt tài chính:** {res_data.get('fin_summary')}")
+                    st.write(f"- **Dòng tiền:** {res_data.get('flow_summary')}")
+                    st.markdown("**Cảnh báo & Phản biện:**")
+                    for arg in res_data.get("counter_arguments", []):
+                        st.markdown(f"- {arg}")
+
+            st.markdown("---")
             col_save1, col_save2 = st.columns([3, 1])
             with col_save1:
                 st.info(f"💡 Bạn có thể bấm nút bên phải để lưu kết quả phân tích mã **{symbol_input}** này vào Nhật ký (Tab 4).")
             with col_save2:
-                if st.button("💾 Lưu Phân Tích Này", use_container_width=True, type="primary"):
+                if st.button("💾 Lưu Phân Tích Này", use_container_width=True):
                     try:
+                        summary_text = st.session_state.get(f"ai_result_{symbol_input}", {}).get("summary", "Phân tích kỹ thuật định lượng")
                         save_analysis(
                             symbol=symbol_input,
                             last_close=float(df['close'].iloc[-1]),
@@ -224,13 +245,13 @@ with main_tab1:
                             buy_zone=decision_res['buy_zone'],
                             target_price=decision_res['target_price'],
                             stop_loss=decision_res['stop_loss'],
-                            summary=ai_res['summary']
+                            summary=summary_text
                         )
                         st.success("Đã lưu thành công vào Nhật ký!")
                     except Exception as e:
                         st.error(f"Lỗi khi lưu: {e}")
 
-            sub_t1, sub_t2, sub_t3 = st.tabs(["📈 Biểu Đồ Kỹ Thuật", "🔍 AI Phản Biện & Tài Chính", "📋 Chi Tiết Chỉ Báo"])
+            sub_t1, sub_t2, sub_t3 = st.tabs(["📈 Biểu Đồ Kỹ Thuật", "🔍 Chi Tiết Chỉ Báo", "📋 Vùng Hỗ Trợ/Kháng Cự"])
             
             with sub_t1:
                 fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.7, 0.3])
@@ -243,18 +264,15 @@ with main_tab1:
                 st.plotly_chart(fig, use_container_width=True)
 
             with sub_t2:
-                st.subheader("🔍 Sức Khỏe Tài Chính & Phản Biện Rủi Ro")
-                st.info(f"**Chỉ số tài chính cơ bản:** {ai_res['fin_summary']}")
-                st.markdown("**Các điểm phản biện & Cảnh báo bẫy giá từ AI:**")
-                for arg in ai_res["counter_arguments"]:
-                    st.warning(arg)
-
-            with sub_t3:
                 st.subheader(f"📄 Thông Số Kỹ Thuật Chi Tiết Mã {symbol_input}")
                 st.write(f"- **Điểm số kỹ thuật:** {tech_res['score']} điểm ({score_description(tech_res['score'])})")
-                st.write(f"- **Trạng thái dòng tiền:** {ai_res['flow_summary']}")
                 st.write(f"- **Khoảng cách tới hỗ trợ:** {sr_res['dist_to_support_pct']}% (Ngưỡng hỗ trợ: {sr_res['support']})")
                 st.write(f"- **Khoảng cách tới kháng cự:** {sr_res['dist_to_resistance_pct']}% (Ngưỡng kháng cự: {sr_res['resistance']})")
+
+            with sub_t3:
+                st.subheader("🛡️ Quản Trị Rủi Ro & Vùng Giá")
+                st.write(f"- **Ngưỡng Hỗ Trợ Gần Nhất:** {sr_res['support']}")
+                st.write(f"- **Ngưỡng Kháng Cự Gần Nhất:** {sr_res['resistance']}")
 
         except Exception as e:
             st.error(f"⚠️ Lỗi khi xử lý tính toán kỹ thuật hoặc AI: {e}")
@@ -263,29 +281,20 @@ with main_tab1:
 # --- TAB 2: KỊCH BẢN THẦY - TRÒ ---
 with main_tab2:
     st.subheader(f"🗣️ KỊCH BẢN LỜI KHUYÊN TỪ CHUYÊN GIA CHO MÃ {symbol_input}")
-    
     if df_raw is None or df_raw.empty:
-        st.warning("⚠️ Vui lòng nạp tệp dữ liệu ở thanh bên trái để có cơ sở phân tích và đưa ra lời khuyên chiến lược.")
+        st.warning("⚠️ Vui lòng nạp tệp dữ liệu ở thanh bên trái để có cơ sở phân tích.")
     else:
         try:
             df = add_indicators(df_raw)
-            ai_res = run_ai_analysis(df, symbol_input, ato_data=ato_data, financial_metrics=financial_metrics)
-            decision_res = make_trading_decision(df, ai_res)
-
+            decision_res = make_trading_decision(df, {"summary": ""})
             st.markdown(f"""
             <div style="background-color: #1e293b; color: #f8fafc; padding: 1.8rem; border-radius: 12px; border-left: 6px solid #3b82f6; margin-top: 1rem;">
-                <div style="font-weight: bold; font-size: 1.3rem; color: #60a5fa; margin-bottom: 1rem;">🎯 LỜI KHUYÊN CHIẾN LƯỢC (GÓC NHÌN CHUYÊN GIA THỰC CHIẾN)</div>
+                <div style="font-weight: bold; font-size: 1.3rem; color: #60a5fa; margin-bottom: 1rem;">🎯 LỜI KHUYÊN CHIẾN LƯỢC</div>
                 <div style="line-height: 1.8; font-size: 1.05rem;">
                     "Đối với mã <b>{symbol_input}</b>, hệ thống xác nhận trạng thái là: <b style="color: #38bdf8;">{decision_res['decision']}</b>.<br/><br/>
-                    <b>1. Đánh giá tổng quan cốt lõi:</b> {ai_res['summary']}<br/><br/>
-                    <b>2. Chiến lược hành động chi tiết:</b><br/>
-                    &nbsp;&nbsp;&nbsp;&nbsp;🎯 <b>Dành cho NHÀ ĐẦU TƯ CHƯA CÓ HÀNG:</b><br/>
-                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- Tuyệt đối không mua đuổi hưng phấn khi giá xanh mạnh.<br/>
-                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- Kiên nhẫn chờ nhịp chỉnh về đúng vùng mua chuẩn <code style="color: #facc15; font-size: 1.1rem;">{decision_res['buy_zone']}</code> để lấy vị thế thăm dò 30-50%.<br/><br/>
-                    &nbsp;&nbsp;&nbsp;&nbsp;🛡️ <b>Dành cho NHÀ ĐẦU TƯ ĐÃ CÓ HÀNG:</b><br/>
-                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- Tiếp tục nắm giữ gồng lãi theo xu hướng nếu dòng tiền khỏe.<br/>
-                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- Canh chốt lời từng phần khi tiến sát mục tiêu <code style="color: #facc15; font-size: 1.1rem;">{decision_res['target_price']}</code>.<br/>
-                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- Tuân thủ tuyệt đối kỷ luật cắt lỗ hạ tỷ trọng ngay lập tức nếu thủng vùng <code style="color: #f87171; font-size: 1.1rem;">{decision_res['stop_loss']}</code>!"
+                    - <b>Vùng mua chuẩn:</b> <code style="color: #facc15;">{decision_res['buy_zone']}</code><br/>
+                    - <b>Mục tiêu chốt lời (TP):</b> <code style="color: #facc15;">{decision_res['target_price']}</code><br/>
+                    - <b>Điểm cắt lỗ (SL):</b> <code style="color: #f87171;">{decision_res['stop_loss']}</code>"
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -295,118 +304,35 @@ with main_tab2:
 # --- TAB 3: QUẢN TRỊ VỐN & NAV ---
 with main_tab3:
     st.subheader("💼 QUẢN TRỊ VỐN & DÒNG TIỀN DANH MỤC")
-    st.caption("👇 Bạn có thể thêm bớt mã, chỉnh sửa khối lượng, giá vốn trực tiếp trên bảng bên dưới như Excel:")
-    
     edited_portfolio = st.data_editor(st.session_state["portfolio_user"], num_rows="dynamic", key="pf_editor_main", use_container_width=True)
-    
     if st.button("⚡ Lưu & Cập Nhật Dòng Tiền Danh Mục", use_container_width=True):
         st.session_state["portfolio_user"] = edited_portfolio
-        st.success("Đã cập nhật danh mục vốn và dòng tiền thành công!")
+        st.success("Đã cập nhật danh mục thành công!")
         st.rerun()
-
-    if not edited_portfolio.empty:
-        pf = edited_portfolio.copy()
-        pf["Khối Lượng"] = pd.to_numeric(pf["Khối Lượng"], errors="coerce").fillna(0)
-        pf["Giá Vốn"] = pd.to_numeric(pf["Giá Vốn"], errors="coerce").fillna(0)
-        pf["Giá Hiện Tại"] = pd.to_numeric(pf["Giá Hiện Tại"], errors="coerce").fillna(0)
-        
-        pf["Giá Trị Hiện Tại"] = pf["Khối Lượng"] * pf["Giá Hiện Tại"]
-        pf["Vốn Gốc"] = pf["Khối Lượng"] * pf["Giá Vốn"]
-        pf["Lãi/Lỗ (VNĐ)"] = pf["Giá Trị Hiện Tại"] - pf["Vốn Gốc"]
-        pf["Lãi/Lỗ (%)"] = np.where(pf["Vốn Gốc"] > 0, (pf["Lãi/Lỗ (VNĐ)"] / pf["Vốn Gốc"]) * 100, 0)
-        
-        total_nav = pf["Giá Trị Hiện Tại"].sum()
-        total_cost = pf["Vốn Gốc"].sum()
-        total_pnl = pf["Lãi/Lỗ (VNĐ)"].sum()
-        total_pnl_pct = (total_pnl / total_cost) * 100 if total_cost > 0 else 0
-        
-        st.markdown("---")
-        v1, v2, v3, v4 = st.columns(4)
-        v1.metric("Tổng Vốn Gốc", f"{total_cost:,.0f} VNĐ")
-        v2.metric("Tổng NAV Hiện Tại", f"{total_nav:,.0f} VNĐ")
-        v3.metric("Tổng Lãi/Lỗ Thực Tế", f"{total_pnl:,.0f} VNĐ", f"{total_pnl_pct:.2f}%")
-        v4.metric("Trạng Thái Dòng Tiền", "Đang Sinh Lời" if total_pnl >= 0 else "Đang Âm Vốn")
-
-        st.markdown("---")
-        st.dataframe(pf.style.format({
-            "Giá Vốn": "{:,.2f}", "Giá Hiện Tại": "{:,.2f}",
-            "Vốn Gốc": "{:,.0f}", "Giá Trị Hiện Tại": "{:,.0f}",
-            "Lãi/Lỗ (VNĐ)": "{:,.0f}", "Lãi/Lỗ (%)": "{:.2f}%"
-        }), use_container_width=True)
 
 # --- TAB 4: LỊCH SỬ & QUẢN LÝ MÃ ---
 with main_tab4:
     st.subheader("📜 Nhật Ký & Quản Lý Lịch Sử Phân Tích")
-    st.caption("Tra cứu lại toàn bộ lịch sử phân tích đã lưu trong hệ thống:")
-    
     filter_symbol = st.text_input("🔍 Lọc theo mã cổ phiếu (Để trống nếu xem tất cả):", value="").upper()
-    
-    history_list = []
     try:
         with sqlite3.connect(DB_PATH, check_same_thread=False) as conn:
             cursor = conn.cursor()
-            cursor.execute("PRAGMA table_info(analysis_history)")
-            cols = [col[1] for col in cursor.fetchall()]
-            
-            time_col = "timestamp" if "timestamp" in cols else ("date" if "date" in cols else (cols[2] if len(cols) > 2 else "id"))
-            sym_col = "symbol" if "symbol" in cols else (cols[1] if len(cols) > 1 else "id")
-            close_col = "last_close" if "last_close" in cols else ("close" if "close" in cols else (cols[3] if len(cols) > 3 else "0"))
-            dec_col = "decision" if "decision" in cols else "N/A"
-            buy_col = "buy_zone" if "buy_zone" in cols else "N/A"
-            tp_col = "target_price" if "target_price" in cols else "N/A"
-            sl_col = "stop_loss" if "stop_loss" in cols else "N/A"
-            
             if filter_symbol:
-                query = f"SELECT id, {sym_col}, {time_col}, {close_col}, {dec_col}, {buy_col}, {tp_col}, {sl_col} FROM analysis_history WHERE {sym_col} = ? ORDER BY id DESC LIMIT 100"
-                cursor.execute(query, (filter_symbol,))
+                cursor.execute("SELECT id, symbol, timestamp, last_close, decision, buy_zone, target_price, stop_loss FROM analysis_history WHERE symbol = ? ORDER BY id DESC LIMIT 100", (filter_symbol,))
             else:
-                query = f"SELECT id, {sym_col}, {time_col}, {close_col}, {dec_col}, {buy_col}, {tp_col}, {sl_col} FROM analysis_history ORDER BY id DESC LIMIT 100"
-                cursor.execute(query)
+                cursor.execute("SELECT id, symbol, timestamp, last_close, decision, buy_zone, target_price, stop_loss FROM analysis_history ORDER BY id DESC LIMIT 100")
             history_list = cursor.fetchall()
-    except Exception as e:
-        st.error(f"Lỗi cơ sở dữ liệu: {e}")
-    
-    if history_list:
-        col_top1, col_top2 = st.columns([2, 2])
-        with col_top1:
-            st.info(f"Tìm thấy **{len(history_list)}** bản ghi trong nhật ký.")
-        with col_top2:
-            if st.button("🔥 XÓA TOÀN BỘ LỊCH SỬ", use_container_width=True, type="primary"):
+            
+        if history_list:
+            if st.button("🔥 XÓA TOÀN BỘ LỊCH SỬ", type="primary"):
                 with sqlite3.connect(DB_PATH, check_same_thread=False) as conn:
                     conn.execute("DELETE FROM analysis_history")
                     conn.commit()
-                st.success("Đã xóa sạch toàn bộ lịch sử phân tích trong hệ thống!")
+                st.success("Đã xóa sạch lịch sử!")
                 st.rerun()
-                
-        st.markdown("---")
-        
-        cleaned_history = []
-        for row in history_list:
-            r_id = row[0]
-            r_symbol = row[1] if len(row) > 1 else "N/A"
-            r_time = row[2] if len(row) > 2 else "N/A"
-            try:
-                r_close = float(row[3]) if len(row) > 3 and row[3] is not None else 0.0
-            except:
-                r_close = 0.0
-            r_decision = row[4] if len(row) > 4 else "N/A"
-            r_buy = row[5] if len(row) > 5 else "N/A"
-            r_tp = row[6] if len(row) > 6 else "N/A"
-            r_sl = row[7] if len(row) > 7 else "N/A"
-            
-            cleaned_history.append({
-                "ID": r_id,
-                "Mã": r_symbol,
-                "Thời Gian": r_time,
-                "Giá Đóng": r_close,
-                "Quyết Định": r_decision,
-                "Vùng Mua": r_buy,
-                "Chốt Lời": r_tp,
-                "Cắt Lỗ": r_sl
-            })
-
-        hist_df = pd.DataFrame(cleaned_history)
-        st.dataframe(hist_df, hide_index=True, use_container_width=True)
-        
-    else:
-        st.info("Chưa có lịch sử phân tích nào được ghi nhận. Bạn hãy sang Tab 1 bấm nút 'Lưu Phân Tích Này' để ghi dữ liệu mới nhé!")
+            hist_df = pd.DataFrame(history_list, columns=["ID", "Mã", "Thời Gian", "Giá Đóng", "Quyết Định", "Vùng Mua", "Chốt Lời", "Cắt Lỗ"])
+            st.dataframe(hist_df, hide_index=True, use_container_width=True)
+        else:
+            st.info("Chưa có lịch sử phân tích nào được ghi nhận.")
+    except Exception as e:
+        st.error(f"Lỗi cơ sở dữ liệu: {e}")

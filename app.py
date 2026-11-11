@@ -295,13 +295,14 @@ if fin_debt.strip():
     except: pass
 
 # -----------------------------------------------------------------------------
-# GIAO DIỆN CHÍNH: 4 TABS THỰC CHIẾN
+# GIAO DIỆN CHÍNH: 5 TABS (ĐÃ THÊM TAB 5 RIÊNG BIỆT CHO SIÊU CÔNG CỤ DỮ LIỆU)
 # -----------------------------------------------------------------------------
-main_tab1, main_tab2, main_tab3, main_tab4 = st.tabs([
+main_tab1, main_tab2, main_tab3, main_tab4, main_tab5 = st.tabs([
     "📊 TAB 1: KỸ THUẬT & TÀI CHÍNH", 
     "🗣️ TAB 2: KỊCH BẢN THẦY - TRÒ",
     "💼 TAB 3: QUẢN TRỊ VỐN & NAV",
-    "📜 TAB 4: LỊCH SỬ & QUẢN LÝ MÃ"
+    "📜 TAB 4: LỊCH SỬ & QUẢN LÝ MÃ",
+    "📋 TAB 5: SIÊU CÔNG CỤ XỬ LÝ DỮ LIỆU"
 ])
 
 # --- TAB 1: KỸ THUẬT & TÀI CHÍNH ---
@@ -451,7 +452,7 @@ with main_tab3:
             "Lãi/Lỗ (VNĐ)": "{:,.0f}", "Lãi/Lỗ (%)": "{:.2f}%"
         }), use_container_width=True)
 
-# --- TAB 4: LỊCH SỬ & QUẢN LÝ MÃ (GỌN GÀNG & XÓA TOÀN BỘ) ---
+# --- TAB 4: LỊCH SỬ & QUẢN LÝ MÃ ---
 with main_tab4:
     st.subheader("📜 Nhật Ký & Quản Lý Lịch Sử Phân Tích")
     st.caption("Tra cứu lại toàn bộ lịch sử phân tích đã lưu trong hệ thống:")
@@ -462,28 +463,12 @@ with main_tab4:
     try:
         with sqlite3.connect(DB_PATH, check_same_thread=False) as conn:
             cursor = conn.cursor()
-            
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS analysis_history (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    symbol TEXT,
-                    timestamp TEXT,
-                    last_close REAL,
-                    score INTEGER,
-                    decision TEXT,
-                    buy_zone TEXT,
-                    target_price TEXT,
-                    stop_loss TEXT,
-                    summary TEXT
-                )
-            ''')
-            
             cursor.execute("PRAGMA table_info(analysis_history)")
             cols = [col[1] for col in cursor.fetchall()]
             
-            time_col = "timestamp" if "timestamp" in cols else ("date" if "date" in cols else (cols[2] if len(cols) > 2 else "id"))
-            sym_col = "symbol" if "symbol" in cols else (cols[1] if len(cols) > 1 else "id")
-            close_col = "last_close" if "last_close" in cols else ("close" if "close" in cols else (cols[3] if len(cols) > 3 else "0"))
+            time_col = "timestamp" if "timestamp" in cols else "id"
+            sym_col = "symbol" if "symbol" in cols else "id"
+            close_col = "last_close" if "last_close" in cols else "0"
             dec_col = "decision" if "decision" in cols else "N/A"
             buy_col = "buy_zone" if "buy_zone" in cols else "N/A"
             tp_col = "target_price" if "target_price" in cols else "N/A"
@@ -515,31 +500,183 @@ with main_tab4:
         
         cleaned_history = []
         for row in history_list:
-            r_id = row[0]
-            r_symbol = row[1] if len(row) > 1 else "N/A"
-            r_time = row[2] if len(row) > 2 else "N/A"
-            try:
-                r_close = float(row[3]) if len(row) > 3 and row[3] is not None else 0.0
-            except:
-                r_close = 0.0
-            r_decision = row[4] if len(row) > 4 else "N/A"
-            r_buy = row[5] if len(row) > 5 else "N/A"
-            r_tp = row[6] if len(row) > 6 else "N/A"
-            r_sl = row[7] if len(row) > 7 else "N/A"
-            
             cleaned_history.append({
-                "ID": r_id,
-                "Mã": r_symbol,
-                "Thời Gian": r_time,
-                "Giá Đóng": r_close,
-                "Quyết Định": r_decision,
-                "Vùng Mua": r_buy,
-                "Chốt Lời": r_tp,
-                "Cắt Lỗ": r_sl
+                "ID": row[0],
+                "Mã": row[1] if len(row) > 1 else "N/A",
+                "Thời Gian": row[2] if len(row) > 2 else "N/A",
+                "Giá Đóng": float(row[3]) if len(row) > 3 and row[3] is not None else 0.0,
+                "Quyết Định": row[4] if len(row) > 4 else "N/A",
+                "Vùng Mua": row[5] if len(row) > 5 else "N/A",
+                "Chốt Lời": row[6] if len(row) > 6 else "N/A",
+                "Cắt Lỗ": row[7] if len(row) > 7 else "N/A"
             })
 
         hist_df = pd.DataFrame(cleaned_history)
         st.dataframe(hist_df, hide_index=True, use_container_width=True)
-        
     else:
-        st.info("Chưa có lịch sử phân tích nào được ghi nhận. Sếp hãy sang Tab 1 bấm nút 'Lưu Phân Tích Này' để ghi dữ liệu mới nhé!")
+        st.info("Chưa có lịch sử phân tích nào được ghi nhận.")
+
+# --- TAB 5: SIÊU CÔNG CỤ XỬ LÝ DỮ LIỆU ĐA NĂNG (TAB RIÊNG BIỆT HOÀN TOÀN) ---
+with main_tab5:
+    st.subheader("📋 Siêu Công Cụ Xử Lý Dữ Liệu: Cập Nhật, Chỉnh Sửa & Xuất File")
+    st.caption("Hỗ trợ mở file cũ, nhập thêm dữ liệu, chỉnh sửa trực tiếp, tự động căn giữa & cập nhật file mới")
+
+    # Hàm bóc tách dữ liệu
+    def smart_parse_input_tab5(text_data):
+        lines = [line.strip() for line in text_data.strip().split('\n') if line.strip()]
+        if not lines:
+            return pd.DataFrame()
+        
+        first_line = lines[0]
+        if ',' in first_line and ('Date' in first_line or 'Open' in first_line):
+            try:
+                return pd.read_csv(io.StringIO(text_data))
+            except Exception:
+                pass
+                
+        parsed_rows = []
+        for line in lines:
+            if 'Open' in line or 'Date' in line or 'Ngày' in line:
+                continue
+                
+            parts = line.split()
+            if len(parts) >= 6:
+                date_str = parts[0]
+                try:
+                    open_p = float(parts[1].replace(',', ''))
+                    high_p = float(parts[2].replace(',', ''))
+                    low_p = float(parts[3].replace(',', ''))
+                    close_p = float(parts[4].replace(',', ''))
+                    
+                    vol_str = parts[5].upper().replace(',', '')
+                    vol = 0.0
+                    if 'M' in vol_str:
+                        vol = float(vol_str.replace('M', '')) * 1_000_000
+                    elif 'K' in vol_str:
+                        vol = float(vol_str.replace('K', '')) * 1_000
+                    else:
+                        vol = float(vol_str)
+                        
+                    parsed_rows.append({
+                        'Date': date_str,
+                        'Open': open_p,
+                        'High': high_p,
+                        'Low': low_p,
+                        'Close': close_p,
+                        'Volume': vol
+                    })
+                except Exception:
+                    continue
+                    
+        return pd.DataFrame(parsed_rows)
+
+    input_method_tab5 = st.radio(
+        "Chọn phương thức nạp liệu cho công cụ:",
+        ["📁 Mở File Excel / CSV Cũ Sẵn Có", "📝 Dán Văn Bản Trực Tiếp"],
+        key="radio_tab5_input"
+    )
+
+    df_result_tab5 = None
+    original_filename_tab5 = "du_lieu_cap_nhat"
+
+    if input_method_tab5 == "📁 Mở File Excel / CSV Cũ Sẵn Có":
+        uploaded_file_tab5 = st.file_uploader(
+            "Chọn file Excel (.xlsx) hoặc CSV cũ của bạn:", 
+            type=["xlsx", "xls", "csv"], 
+            key="uploader_tab5"
+        )
+        if uploaded_file_tab5 is not None:
+            try:
+                file_bytes_t5 = io.BytesIO(uploaded_file_tab5.getvalue())
+                if uploaded_file_tab5.name.lower().endswith('.csv'):
+                    df_result_tab5 = pd.read_csv(file_bytes_t5)
+                else:
+                    df_result_tab5 = pd.read_excel(file_bytes_t5, engine='openpyxl')
+                
+                original_filename_tab5 = os.path.splitext(uploaded_file_tab5.name)[0]
+                st.success(f"✅ Đã mở file: **{uploaded_file_tab5.name}** ({len(df_result_tab5)} dòng)")
+            except Exception as e:
+                st.error(f"❌ Lỗi đọc tệp: {e}")
+    else:
+        st.subheader("📝 Dán dữ liệu mới vào khung bên dưới:")
+        raw_text_tab5 = st.text_area(
+            "Dán dữ liệu tại đây:",
+            value="Date,Open,High,Low,Close,Volume\n2026-11-09,20.45,20.50,19.85,19.90,25847000",
+            height=180,
+            key="text_area_tab5"
+        )
+        
+        if st.button("🚀 Bóc Tách Dữ Liệu", type="primary", use_container_width=True, key="btn_parse_tab5"):
+            if raw_text_tab5.strip():
+                df_result_tab5 = smart_parse_input_tab5(raw_text_tab5)
+                if not df_result_tab5.empty:
+                    st.success(f"✅ Đã bóc tách thành công **{len(df_result_tab5)} dòng dữ liệu**!")
+                else:
+                    st.warning("⚠️ Không thể đọc được cấu trúc dữ liệu. Vui lòng kiểm tra lại định dạng!")
+
+    if df_result_tab5 is not None and not df_result_tab5.empty:
+        st.markdown("---")
+        st.subheader(f"📊 Bảng Dữ Liệu Hiện Tại ({len(df_result_tab5)} dòng, {len(df_result_tab5.columns)} cột):")
+        st.caption("💡 Bạn có thể nhấp đúp vào ô bất kỳ để chỉnh sửa, hoặc kéo xuống dòng cuối cùng để bấm thêm dòng dữ liệu mới.")
+        
+        edited_df_tab5 = st.data_editor(
+            df_result_tab5, 
+            use_container_width=True, 
+            num_rows="dynamic",
+            key="data_editor_tab5"
+        )
+        
+        st.markdown("---")
+        st.subheader("💾 LƯU & CẬP NHẬT TỆP")
+        
+        custom_filename_tab5 = st.text_input(
+            "Đặt tên file khi lưu lại (Có thể giữ nguyên tên cũ để ghi đè):", 
+            value=original_filename_tab5,
+            key="filename_input_tab5"
+        )
+        
+        excel_filename_tab5 = f"{custom_filename_tab5.strip()}.xlsx" if custom_filename_tab5.strip() else "du_lieu_moi.xlsx"
+        csv_filename_tab5 = f"{custom_filename_tab5.strip()}.csv" if custom_filename_tab5.strip() else "du_lieu_moi.csv"
+
+        excel_buffer_tab5 = io.BytesIO()
+        with pd.ExcelWriter(excel_buffer_tab5, engine='openpyxl') as writer:
+            edited_df_tab5.to_excel(writer, index=False, sheet_name='Du_Lieu_Cap_Nhat')
+            worksheet_tab5 = writer.sheets['Du_Lieu_Cap_Nhat']
+            center_alignment_tab5 = Alignment(horizontal='center', vertical='center')
+            
+            for col in worksheet_tab5.columns:
+                max_len = 0
+                col_letter = col[0].column_letter
+                for cell in col:
+                    cell.alignment = center_alignment_tab5
+                    try:
+                        if cell.value is not None:
+                            max_len = max(max_len, len(str(cell.value)))
+                    except:
+                        pass
+                worksheet_tab5.column_dimensions[col_letter].width = max(max_len + 6, 14)
+                
+        csv_bytes_tab5 = edited_df_tab5.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
+
+        col_dl1, col_dl2 = st.columns(2)
+        with col_dl1:
+            st.download_button(
+                label="📊 Tải Xuất File Excel Đã Cập Nhật",
+                data=excel_buffer_tab5.getvalue(),
+                file_name=excel_filename_tab5,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+                type="primary",
+                key="btn_dl_excel_tab5"
+            )
+        with col_dl2:
+            st.download_button(
+                label="📄 Tải Xuất File CSV Đã Cập Nhật",
+                data=csv_bytes_tab5,
+                file_name=csv_filename_tab5,
+                mime="text/csv",
+                use_container_width=True,
+                key="btn_dl_csv_tab5"
+            )
+    else:
+        st.info("👋 Hãy chọn file Excel/CSV cũ ở trên hoặc dán dữ liệu vào khung để bắt đầu làm việc nhé!")

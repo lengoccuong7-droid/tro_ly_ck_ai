@@ -27,7 +27,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Khởi tạo database nhật ký phân tích
 def init_system_db():
     with sqlite3.connect(DB_PATH, check_same_thread=False) as conn:
         cursor = conn.cursor()
@@ -49,7 +48,6 @@ def init_system_db():
 
 init_system_db()
 
-# Khởi tạo Cache và Danh mục đầu tư mặc định trong Session State
 if "cache_mgr" not in st.session_state:
     st.session_state["cache_mgr"] = CacheManager(default_ttl=900)
 
@@ -63,7 +61,7 @@ if "portfolio_user" not in st.session_state:
 # 2. GIAO DIỆN CHÍNH
 # -----------------------------------------------------------------------------
 st.title(f"📈 {APP_NAME} (v{APP_VERSION} ULTIMATE PRO)")
-st.caption("Hệ thống Trợ lý Phân tích Chứng khoán Thực chiến - AI Powered & Định lượng Chuyên Sâu")
+st.caption("Hệ thống Trợ lý Phân tích Chứng khoán Thực chiến - AI Powered & Định lượng Sắc Bén")
 
 # -----------------------------------------------------------------------------
 # SIDEBAR: CỔNG NẠP DỮ LIỆU FILE & XỬ LÝ THÔNG MINH
@@ -103,24 +101,18 @@ if uploaded_file is not None:
             def parse_volume(val):
                 if pd.isna(val): return 0.0
                 val_str = str(val).replace(",", "").strip().upper()
-                if 'M' in val_str:
-                    return float(val_str.replace('M', '')) * 1_000_000
-                elif 'K' in val_str:
-                    return float(val_str.replace('K', '')) * 1_000
-                try:
-                    return float(val_str)
-                except:
-                    return 0.0
+                if 'M' in val_str: return float(val_str.replace('M', '')) * 1_000_000
+                elif 'K' in val_str: return float(val_str.replace('K', '')) * 1_000
+                try: return float(val_str)
+                except: return 0.0
             df_raw["volume"] = df_raw["volume"].apply(parse_volume)
 
         if "pct_change" in df_raw.columns:
             def parse_pct(val):
                 if pd.isna(val): return 0.0
                 val_str = str(val).replace("%", "").replace("+", "").replace(",", ".").strip()
-                try:
-                    return float(val_str)
-                except:
-                    return 0.0
+                try: return float(val_str)
+                except: return 0.0
             df_raw["pct_change"] = df_raw["pct_change"].apply(parse_pct)
             
         if "date" in df_raw.columns:
@@ -128,7 +120,6 @@ if uploaded_file is not None:
                 df_raw["date"] = pd.to_datetime(df_raw["date"], unit='D', origin='1899-12-30')
             else:
                 df_raw["date"] = pd.to_datetime(df_raw["date"], errors="coerce", dayfirst=True)
-            
             df_raw = df_raw.dropna(subset=["date", "close"]).sort_values("date").reset_index(drop=True)
             
     except Exception as e:
@@ -180,17 +171,15 @@ main_tab1, main_tab2, main_tab3, main_tab4 = st.tabs([
 # --- TAB 1: KỸ THUẬT & TÀI CHÍNH ---
 with main_tab1:
     if df_raw is None or df_raw.empty:
-        st.warning("⚠️ CHƯA CÓ DỮ LIỆU LỊCH SỬ: Vui lòng tải tệp CSV/Excel từ bảng giá ở thanh bên trái để tiến hành phân tích.")
-        st.info("💡 Hướng dẫn: Tải file dữ liệu lịch sử của mã cổ phiếu vào mục tải tệp ở sidebar.")
+        st.warning("⚠️ CHƯA CÓ DỮ LIỆU LỊCH SỬ: Vui lòng tải tệp CSV/Excel từ bảng giá ở thanh bên trái.")
     else:
         try:
             df = add_indicators(df_raw)
-            
             decision_res = make_trading_decision(df, {"summary": ""})
             tech_res = evaluate_technical(df)
             sr_res = find_support_resistance(df)
 
-            st.subheader(f"🎯 TÍN HIỆU & VÙNG GIAO DỊCH MÃ {symbol_input}")
+            st.subheader(f"🎯 TÍN HIỆU & VÙNG GIAO DỊCH AN TOÀN MÃ {symbol_input}")
             
             m1, m2, m3, m4, m5 = st.columns(5)
             m1.metric("QUYẾT ĐỊNH", decision_res["decision"])
@@ -201,14 +190,11 @@ with main_tab1:
 
             st.markdown("---")
             
-            # -----------------------------------------------------------------------------
-            # NÚT GỌI TRỰC TIẾP AI PHÂN TÍCH CHO MÃ ĐANG CHỌN
-            # -----------------------------------------------------------------------------
+            # NÚT GỌI TRỰC TIẾP AI PHÂN TÍCH SẮC SẢO
             col_btn1, col_btn2 = st.columns([2, 4])
             with col_btn1:
                 if st.button(f"🤖 Gọi Trực Tiếp AI Phân Tích [{symbol_input}]", use_container_width=True, type="primary"):
                     with st.spinner(f"Đang kết nối trực tiếp với Siêu Trí Tuệ để phân tích mã {symbol_input}..."):
-                        # Gọi trực tiếp module AI analyzer
                         direct_ai_result = run_ai_analysis(
                             df=df, 
                             symbol=symbol_input, 
@@ -217,22 +203,21 @@ with main_tab1:
                         )
                         st.session_state[f"ai_result_{symbol_input}"] = direct_ai_result
 
-            # Hiển thị kết quả gọi trực tiếp ngay bên dưới nếu đã có trong session
             if f"ai_result_{symbol_input}" in st.session_state:
-                st.success(f"✨ Kết quả phân tích trực tiếp từ AI cho mã **{symbol_input}**:")
+                st.success(f"✨ Phân tích chuyên sâu từ Siêu Trí Tuệ cho mã **{symbol_input}**:")
                 res_data = st.session_state[f"ai_result_{symbol_input}"]
                 st.markdown(res_data.get("summary", "Không có nội dung."))
                 with st.expander("📌 Xem chi tiết thông số tổng hợp"):
                     st.write(f"- **Tóm tắt tài chính:** {res_data.get('fin_summary')}")
                     st.write(f"- **Dòng tiền:** {res_data.get('flow_summary')}")
-                    st.markdown("**Cảnh báo & Phản biện:**")
+                    st.markdown("**Cảnh báo & Kỷ luật:**")
                     for arg in res_data.get("counter_arguments", []):
                         st.markdown(f"- {arg}")
 
             st.markdown("---")
             col_save1, col_save2 = st.columns([3, 1])
             with col_save1:
-                st.info(f"💡 Bạn có thể bấm nút bên phải để lưu kết quả phân tích mã **{symbol_input}** này vào Nhật ký (Tab 4).")
+                st.info(f"💡 Bấm nút bên phải để lưu kết quả phân tích mã **{symbol_input}** vào Nhật ký (Tab 4).")
             with col_save2:
                 if st.button("💾 Lưu Phân Tích Này", use_container_width=True):
                     try:
@@ -275,26 +260,25 @@ with main_tab1:
                 st.write(f"- **Ngưỡng Kháng Cự Gần Nhất:** {sr_res['resistance']}")
 
         except Exception as e:
-            st.error(f"⚠️ Lỗi khi xử lý tính toán kỹ thuật hoặc AI: {e}")
-            st.info("💡 Vui lòng kiểm tra lại tệp dữ liệu nạp vào xem có đủ các cột Giá và Khối lượng hay không.")
+            st.error(f"⚠️ Lỗi xử lý kỹ thuật: {e}")
 
 # --- TAB 2: KỊCH BẢN THẦY - TRÒ ---
 with main_tab2:
     st.subheader(f"🗣️ KỊCH BẢN LỜI KHUYÊN TỪ CHUYÊN GIA CHO MÃ {symbol_input}")
     if df_raw is None or df_raw.empty:
-        st.warning("⚠️ Vui lòng nạp tệp dữ liệu ở thanh bên trái để có cơ sở phân tích.")
+        st.warning("⚠️ Vui lòng nạp tệp dữ liệu ở thanh bên trái.")
     else:
         try:
             df = add_indicators(df_raw)
             decision_res = make_trading_decision(df, {"summary": ""})
             st.markdown(f"""
             <div style="background-color: #1e293b; color: #f8fafc; padding: 1.8rem; border-radius: 12px; border-left: 6px solid #3b82f6; margin-top: 1rem;">
-                <div style="font-weight: bold; font-size: 1.3rem; color: #60a5fa; margin-bottom: 1rem;">🎯 LỜI KHUYÊN CHIẾN LƯỢC</div>
+                <div style="font-weight: bold; font-size: 1.3rem; color: #60a5fa; margin-bottom: 1rem;">🎯 LỜI THẦY DẶN TRÒ (KỶ LUẬT THỰC CHIẾN)</div>
                 <div style="line-height: 1.8; font-size: 1.05rem;">
-                    "Đối với mã <b>{symbol_input}</b>, hệ thống xác nhận trạng thái là: <b style="color: #38bdf8;">{decision_res['decision']}</b>.<br/><br/>
-                    - <b>Vùng mua chuẩn:</b> <code style="color: #facc15;">{decision_res['buy_zone']}</code><br/>
+                    "Trò chú ý! Đối với mã <b>{symbol_input}</b>, hệ thống xác nhận trạng thái: <b style="color: #38bdf8;">{decision_res['decision']}</b>.<br/><br/>
+                    - <b>Vùng mua an toàn (Tránh xa kháng cự):</b> <code style="color: #facc15;">{decision_res['buy_zone']}</code><br/>
                     - <b>Mục tiêu chốt lời (TP):</b> <code style="color: #facc15;">{decision_res['target_price']}</code><br/>
-                    - <b>Điểm cắt lỗ (SL):</b> <code style="color: #f87171;">{decision_res['stop_loss']}</code>"
+                    - <b>Điểm cắt lỗ kỷ luật (SL):</b> <code style="color: #f87171;">{decision_res['stop_loss']}</code>"
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -313,7 +297,7 @@ with main_tab3:
 # --- TAB 4: LỊCH SỬ & QUẢN LÝ MÃ ---
 with main_tab4:
     st.subheader("📜 Nhật Ký & Quản Lý Lịch Sử Phân Tích")
-    filter_symbol = st.text_input("🔍 Lọc theo mã cổ phiếu (Để trống nếu xem tất cả):", value="").upper()
+    filter_symbol = st.text_input("🔍 Lọc theo mã cổ phiếu:", value="").upper()
     try:
         with sqlite3.connect(DB_PATH, check_same_thread=False) as conn:
             cursor = conn.cursor()

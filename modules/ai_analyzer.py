@@ -1,19 +1,17 @@
-pimport os
+import os
 import json
 import logging
 
-# Cấu hình logging để dễ dàng theo dõi lỗi nếu có
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 def run_ai_analysis(df, symbol, ato_data=None, financial_metrics=None):
     """
-    Hàm gọi trực tiếp AI để phân tích dữ liệu chứng khoán thực chiến.
-    Tự động trích xuất các thông số kỹ thuật mới nhất từ DataFrame và kết hợp với dữ liệu tài chính/ATO.
+    Hàm gọi trực tiếp AI để phân tích dữ liệu chứng khoán thực chiến, sắc bén,
+    có lọc khoảng cách an toàn so với kháng cự.
     """
     api_key = os.getenv("GEMINI_API_KEY")
     
-    # Nếu chưa cấu hình API Key, trả về cảnh báo trực tiếp
     if not api_key:
         return {
             "summary": "⚠️ Chưa thiết lập biến môi trường `GEMINI_API_KEY`. Vui lòng cấu hình API Key để kích hoạt phân tích AI sâu.",
@@ -26,14 +24,11 @@ def run_ai_analysis(df, symbol, ato_data=None, financial_metrics=None):
         }
     
     try:
-        # Khởi tạo Google GenAI Client
         from google import genai
         client = genai.Client(api_key=api_key)
         
-        # Trích xuất dòng dữ liệu mới nhất từ DataFrame lịch sử
         last_row = df.iloc[-1]
         
-        # Đóng gói dữ liệu ngữ cảnh (Context)
         context_data = {
             "symbol": symbol,
             "date": str(last_row['date']) if 'date' in last_row else "N/A",
@@ -45,21 +40,19 @@ def run_ai_analysis(df, symbol, ato_data=None, financial_metrics=None):
             "financial_metrics": financial_metrics or {}
         }
         
-        # Xây dựng câu lệnh (Prompt) thông minh chuyên sâu cho chuyên gia tài chính
         prompt = f"""
-        Bạn là một chuyên gia phân tích đầu tư chứng khoán thực chiến hàng đầu.
-        Hãy phân tích ngắn gọn, sắc bén và đưa ra nhận định chuyên sâu cho mã cổ phiếu **{symbol}** dựa trên các dữ liệu định lượng thực tế sau:
+        Bạn là một chuyên gia phân tích đầu tư chứng khoán thực chiến cực kỳ sắc bén và kỷ luật.
+        Hãy phân tích sắc sảo mã cổ phiếu **{symbol}** dựa trên dữ liệu định lượng thực tế:
 
         {json.dumps(context_data, ensure_ascii=False, indent=2)}
 
         ---
-        Yêu cầu trả về kết quả bằng tiếng Việt, chuẩn định dạng Markdown, bao gồm:
-        1. **Nhận định xu hướng & Sức mạnh giá hiện tại** của mã.
-        2. **Đánh giá dòng tiền & Yếu tố tài chính cơ bản** (nếu có).
-        3. **Cảnh báo rủi ro / Phản biện bẫy giá** (ít nhất 2 điểm lưu ý quan trọng dành cho nhà đầu tư).
+        Yêu cầu trả về bằng tiếng Việt, định dạng Markdown:
+        1. **Đánh giá xu hướng & Sức mạnh dòng tiền hiện tại**: Phân tích rõ phe mua hay phe bán đang chiếm ưu thế.
+        2. **Định giá & Sức khỏe tài chính**: Nhận định ngắn gọn dựa trên ROE, P/E (nếu có).
+        3. **Chiến lược giá & Cảnh báo bẫy giá (Bull/Bear Trap)**: Tuyệt đối không khuyến khích mua đuổi sát vùng kháng cự. Chỉ mở mua khi có chiết khấu an toàn về vùng hỗ trợ.
         """
         
-        # Gọi mô hình Gemini mới nhất
         response = client.models.generate_content(
             model='gemini-2.5-flash',
             contents=prompt,
@@ -67,13 +60,12 @@ def run_ai_analysis(df, symbol, ato_data=None, financial_metrics=None):
         
         ai_text = response.text
         
-        # Trả về kết quả đúng cấu trúc mà App.py đang mong đợi
         return {
             "summary": ai_text,
             "fin_summary": f"ROE: {financial_metrics.get('roe', 'N/A')}% | P/E: {financial_metrics.get('pe', 'N/A')} | Nợ/VCSH: {financial_metrics.get('debt_equity', 'N/A')}",
             "flow_summary": f"Khối lượng khớp lệnh gần nhất: {last_row.get('volume', 0):,.0f}, giá đóng cửa: {last_row.get('close', 0):,.2f}",
             "counter_arguments": [
-                "⚠️ Thận trọng với các biến động bất thường của thị trường chung (VN-Index).",
+                "⚠️ Tuyệt đối không mua đuổi khi giá đang áp sát vùng kháng cự mạnh.",
                 "🛡️ Luôn tuân thủ tuyệt đối nguyên tắc quản trị rủi ro và điểm cắt lỗ (Stop-loss)."
             ]
         }

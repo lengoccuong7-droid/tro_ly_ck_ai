@@ -6,6 +6,9 @@ from plotly.subplots import make_subplots
 import hashlib
 import sqlite3
 import datetime
+import io
+import os
+from openpyxl.styles import Alignment
 
 from config import APP_NAME, APP_VERSION, DB_PATH
 from modules.indicators import add_indicators

@@ -192,9 +192,10 @@ with main_tab1:
             
             last_close = float(df['close'].iloc[-1])
             decision = "MUA GOM" if tech_res['score'] >= 60 else ("THEO DÕI" if tech_res['score'] >= 40 else "THẬN TRỌNG")
-            buy_zone = f"{last_close * 0.98:,.2f} - {last_close * 1.00:,.2f}"
+            # ĐÃ SỬA: Vùng mua chuẩn thấp hơn giá đóng cửa từ 2% đến 4% để tạo biên an toàn
+            buy_zone = f"{last_close * 0.96:,.2f} - {last_close * 0.98:,.2f}"
             target_price = f"{last_close * 1.10:,.2f}"
-            stop_loss = f"{last_close * 0.95:,.2f}"
+            stop_loss = f"{last_close * 0.93:,.2f}"
 
             st.subheader(f"🎯 TÍN HIỆU & VÙNG GIAO DỊCH MÃ {symbol_input}")
             
@@ -256,7 +257,7 @@ with main_tab1:
             st.error(f"⚠️ Lỗi khi xử lý tính toán kỹ thuật: {e}")
             st.info("💡 Vui lòng kiểm tra lại tệp dữ liệu nạp vào xem có đủ các cột Giá và Khối lượng hay không.")
 
-# --- TAB 2: THAM VẤN ĐẦU TƯ (CHI TIẾT & LÝ DO) ---
+# --- TAB 2: THAM VẤN ĐẦU TƯ (ĐÃ SỬA VÙNG MUA CHUẨN ĐÚNG NGHĨA CHIẾT KHẤU) ---
 with main_tab2:
     st.subheader(f"🗣️ THAM VẤN ĐẦU TƯ CHUYÊN SÂU CHO MÃ {symbol_input}")
     
@@ -269,31 +270,31 @@ with main_tab2:
             sr_res = find_support_resistance(df)
             last_close = float(df['close'].iloc[-1])
             decision = "MUA GOM" if tech_res['score'] >= 60 else ("THEO DÕI" if tech_res['score'] >= 40 else "THẬN TRỌNG")
-            buy_zone = f"{last_close * 0.98:,.2f} - {last_close * 1.00:,.2f}"
+            buy_zone = f"{last_close * 0.96:,.2f} - {last_close * 0.98:,.2f}"
             target_price = f"{last_close * 1.10:,.2f}"
-            stop_loss = f"{last_close * 0.95:,.2f}"
+            stop_loss = f"{last_close * 0.93:,.2f}"
 
             st.markdown(f"""
             <div style="background-color: #1e293b; color: #f8fafc; padding: 2rem; border-radius: 12px; border-left: 6px solid #3b82f6; margin-top: 1rem;">
                 <div style="font-weight: bold; font-size: 1.4rem; color: #60a5fa; margin-bottom: 1.2rem;">📊 BẢNG THAM VẤN CHIẾN LƯỢC & GÓC NHÌN THỰC CHIẾN</div>
                 <div style="line-height: 1.9; font-size: 1.05rem;">
-                    <b>1. Đánh giá trạng thái chung:</b> Mã <b>{symbol_input}</b> đang ở trạng thái <b style="color: #38bdf8;">{decision}</b> với điểm số kỹ thuật tổng hợp là <b>{tech_res['score']}/100</b>.<br/><br/>
+                    <b>1. Đánh giá trạng thái chung:</b> Mã <b>{symbol_input}</b> đang ở trạng thái <b style="color: #38bdf8;">{decision}</b> với điểm số kỹ thuật tổng hợp là <b>{tech_res['score']}/100</b> (Giá đóng cửa hiện tại: <code>{last_close:,.2f}</code>).<br/><br/>
                     
-                    <b>2. Phân tích chi tiết hành động:</b><br/>
+                    <b>2. Phân tích chi tiết hành động & Lý do:</b><br/>
                     &nbsp;&nbsp;&nbsp;&nbsp;🎯 <b>Dành cho nhà đầu tư CHƯA CÓ HÀNG (Vị thế mua mới):</b><br/>
-                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- <i>Chiến lược:</i> Kiên nhẫn chờ nhịp tích lũy hoặc điều chỉnh về vùng giá <code style="color: #facc15; font-size: 1.1rem;">{buy_zone}</code>.<br/>
-                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- <i>Lý do đưa ra:</i> Khoảng cách hiện tại tới ngưỡng hỗ trợ gần nhất là <b>{sr_res['dist_to_support_pct']}%</b>. Việc mua đuổi khi giá đang xanh mạnh dễ dính bẫy giá cao (bulltrap) trong ngắn hạn, quản trị rủi ro yêu cầu giải ngân thăm dò từng phần tại vùng hỗ trợ an toàn.<br/><br/>
+                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- <i>Chiến lược:</i> Kiên nhẫn chờ nhịp tích lũy hoặc điều chỉnh về vùng giá chiết khấu chuẩn <code style="color: #facc15; font-size: 1.1rem;">{buy_zone}</code>.<br/>
+                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- <i>Lý do:</i> Vùng mua này thấp hơn giá hiện tại từ 2-4%, trùng khớp với biên độ an toàn trước ngưỡng hỗ trợ. Việc mua đuổi tại mức giá xác nhận hiện tại dễ gặp rủi ro ngắn hạn khi giá chạm kháng cự.<br/><br/>
                     
                     &nbsp;&nbsp;&nbsp;&nbsp;🛡️ <b>Dành cho nhà đầu tư ĐÃ CÓ HÀNG (Quản trị danh mục):</b><br/>
                     &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- <i>Chiến lược:</i> Tiếp tục nắm giữ, gồng lãi theo xu hướng đường trung bình động.<br/>
-                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- <i>Lý do đưa ra:</i> Trạng thái dòng tiền chưa phát tín hiệu phân phối mạnh. Tuy nhiên, cần chủ động chốt lời từng phần khi tiến sát vùng kháng cự mục tiêu <code style="color: #facc15; font-size: 1.1rem;">{target_price}</code> và <b>tuân thủ tuyệt đối nguyên tắc cắt lỗ</b> nếu giá gãy ngưỡng hỗ trợ cứng tại <code style="color: #f87171; font-size: 1.1rem;">{stop_loss}</code> nhằm bảo vệ NAV tối đa.
+                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- <i>Lý do:</i> Trạng thái dòng tiền chưa phát tín hiệu phân phối mạnh. Chủ động chốt lời từng phần khi tiến sát mục tiêu <code style="color: #facc15; font-size: 1.1rem;">{target_price}</code> và <b>tuân thủ tuyệt đối nguyên tắc cắt lỗ</b> nếu giá gãy ngưỡng hỗ trợ tại <code style="color: #f87171; font-size: 1.1rem;">{stop_loss}</code> nhằm bảo vệ NAV.
                 </div>
             </div>
             """, unsafe_allow_html=True)
         except Exception as e:
             st.error(f"⚠️ Lỗi hiển thị bảng tham vấn đầu tư: {e}")
 
-# --- TAB 3: QUẢN TRỊ VỐN & NAV (CÓ NÚT XÁC NHẬN LƯU, KHÔNG CÓ CỘT STT) ---
+# --- TAB 3: QUẢN TRỊ VỐN & NAV ---
 with main_tab3:
     st.subheader("💼 QUẢN TRỊ VỐN & DÒNG TIỀN TƯƠNG TÁC")
     st.caption("👇 Nhập, chỉnh sửa khối lượng, giá vốn trực tiếp trên bảng và bấm nút xác nhận bên dưới để lưu lại thay đổi:")

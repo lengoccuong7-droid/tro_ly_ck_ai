@@ -58,14 +58,11 @@ if "portfolio_user" not in st.session_state:
     ])
 
 # -----------------------------------------------------------------------------
-# 2. GIAO DIỆN CHÍNH
+# 2. GIAO DIỆN CHÍNH & SIDEBAR
 # -----------------------------------------------------------------------------
 st.title(f"📈 {APP_NAME} (v{APP_VERSION} ULTIMATE PRO)")
 st.caption("Hệ thống Trợ lý Phân tích Chứng khoán Thực chiến - AI Powered & Định lượng Sắc Bén")
 
-# -----------------------------------------------------------------------------
-# SIDEBAR: CỔNG NẠP DỮ LIỆU FILE & XỬ LÝ THÔNG MINH
-# -----------------------------------------------------------------------------
 st.sidebar.header("⚙️ 1. Nguồn Dữ Liệu Lịch Sử")
 uploaded_file = st.sidebar.file_uploader("Nạp tệp CSV hoặc Excel (Lần cuối, KL, % Thay đổi...)", type=["csv", "xlsx", "xls"])
 
@@ -159,7 +156,7 @@ if fin_debt.strip():
     except: pass
 
 # -----------------------------------------------------------------------------
-# GIAO DIỆN CHÍNH: 4 TABS THỰC CHIẾN
+# 3. HỆ THỐNG 4 TABS THỰC CHIẾN
 # -----------------------------------------------------------------------------
 main_tab1, main_tab2, main_tab3, main_tab4 = st.tabs([
     "📊 TAB 1: KỸ THUẬT & TÀI CHÍNH", 
@@ -190,38 +187,13 @@ with main_tab1:
 
             st.markdown("---")
             
-            # NÚT GỌI TRỰC TIẾP AI PHÂN TÍCH SẮC SẢO
-            col_btn1, col_btn2 = st.columns([2, 4])
-            with col_btn1:
-                if st.button(f"🤖 Gọi Trực Tiếp AI Phân Tích [{symbol_input}]", use_container_width=True, type="primary"):
-                    with st.spinner(f"Đang kết nối trực tiếp với Siêu Trí Tuệ để phân tích mã {symbol_input}..."):
-                        direct_ai_result = run_ai_analysis(
-                            df=df, 
-                            symbol=symbol_input, 
-                            ato_data=ato_data, 
-                            financial_metrics=financial_metrics
-                        )
-                        st.session_state[f"ai_result_{symbol_input}"] = direct_ai_result
-
-            if f"ai_result_{symbol_input}" in st.session_state:
-                st.success(f"✨ Phân tích chuyên sâu từ Siêu Trí Tuệ cho mã **{symbol_input}**:")
-                res_data = st.session_state[f"ai_result_{symbol_input}"]
-                st.markdown(res_data.get("summary", "Không có nội dung."))
-                with st.expander("📌 Xem chi tiết thông số tổng hợp"):
-                    st.write(f"- **Tóm tắt tài chính:** {res_data.get('fin_summary')}")
-                    st.write(f"- **Dòng tiền:** {res_data.get('flow_summary')}")
-                    st.markdown("**Cảnh báo & Kỷ luật:**")
-                    for arg in res_data.get("counter_arguments", []):
-                        st.markdown(f"- {arg}")
-
-            st.markdown("---")
             col_save1, col_save2 = st.columns([3, 1])
             with col_save1:
-                st.info(f"💡 Bấm nút bên phải để lưu kết quả phân tích mã **{symbol_input}** vào Nhật ký (Tab 4).")
+                st.info(f"💡 Kết quả phân tích cho mã **{symbol_input}** đã sẵn sàng. Bấm nút bên phải để lưu vào Nhật ký.")
             with col_save2:
                 if st.button("💾 Lưu Phân Tích Này", use_container_width=True):
                     try:
-                        summary_text = st.session_state.get(f"ai_result_{symbol_input}", {}).get("summary", "Phân tích kỹ thuật định lượng")
+                        summary_text = f"Quyết định: {decision_res['decision']} | Vùng mua: {decision_res['buy_zone']}"
                         save_analysis(
                             symbol=symbol_input,
                             last_close=float(df['close'].iloc[-1]),
@@ -262,28 +234,56 @@ with main_tab1:
         except Exception as e:
             st.error(f"⚠️ Lỗi xử lý kỹ thuật: {e}")
 
-# --- TAB 2: KỊCH BẢN THẦY - TRÒ ---
+# --- TAB 2: KỊCH BẢN THẦY - TRÒ (TỰ ĐỘNG GỌI AI GEMINI & TÁCH HAI NHÁNH) ---
 with main_tab2:
-    st.subheader(f"🗣️ KỊCH BẢN LỜI KHUYÊN TỪ CHUYÊN GIA CHO MÃ {symbol_input}")
+    st.subheader(f"🗣️ KỊCH BẢN LỜI KHUYÊN TỪ THẦY CHO MÃ {symbol_input}")
+    
     if df_raw is None or df_raw.empty:
-        st.warning("⚠️ Vui lòng nạp tệp dữ liệu ở thanh bên trái.")
+        st.warning("⚠️ Vui lòng nạp tệp dữ liệu ở thanh bên trái để Thầy có cơ sở phân tích thực chiến.")
     else:
         try:
             df = add_indicators(df_raw)
             decision_res = make_trading_decision(df, {"summary": ""})
+            
+            # Tự động gọi AI Gemini ngầm ngay khi chuyển sang Tab 2
+            with st.spinner(f"🧠 Siêu Trí Tuệ đang kết nối Gemini để phân tích sâu mã {symbol_input}..."):
+                ai_res = run_ai_analysis(
+                    df=df, 
+                    symbol=symbol_input, 
+                    ato_data=ato_data, 
+                    financial_metrics=financial_metrics
+                )
+            
+            ai_summary_text = ai_res.get("summary", "Đang cập nhật phân tích từ hệ thống.")
+
+            # Hiển thị giao diện Thầy - Trò tích hợp AI phân tách rõ Có hàng / Chưa có hàng
             st.markdown(f"""
-            <div style="background-color: #1e293b; color: #f8fafc; padding: 1.8rem; border-radius: 12px; border-left: 6px solid #3b82f6; margin-top: 1rem;">
-                <div style="font-weight: bold; font-size: 1.3rem; color: #60a5fa; margin-bottom: 1rem;">🎯 LỜI THẦY DẶN TRÒ (KỶ LUẬT THỰC CHIẾN)</div>
+            <div style="background-color: #1e293b; color: #f8fafc; padding: 2rem; border-radius: 12px; border-left: 6px solid #3b82f6; margin-top: 1rem;">
+                <div style="font-weight: bold; font-size: 1.4rem; color: #60a5fa; margin-bottom: 1rem;">🎯 GÓC NHÌN CỐ VẤN THỰC CHIẾN (AI POWERED)</div>
                 <div style="line-height: 1.8; font-size: 1.05rem;">
-                    "Trò chú ý! Đối với mã <b>{symbol_input}</b>, hệ thống xác nhận trạng thái: <b style="color: #38bdf8;">{decision_res['decision']}</b>.<br/><br/>
-                    - <b>Vùng mua an toàn (Tránh xa kháng cự):</b> <code style="color: #facc15;">{decision_res['buy_zone']}</code><br/>
-                    - <b>Mục tiêu chốt lời (TP):</b> <code style="color: #facc15;">{decision_res['target_price']}</code><br/>
-                    - <b>Điểm cắt lỗ kỷ luật (SL):</b> <code style="color: #f87171;">{decision_res['stop_loss']}</code>"
+                    "Trò chú ý! Đối với mã <b>{symbol_input}</b>, hệ thống xác nhận trạng thái thị trường là: <b style="color: #38bdf8;">{decision_res['decision']}</b>.<br/><br/>
+                    
+                    <b>1. Nhận định tổng quan từ Thầy (Gemini AI):</b><br/>
+                    <div style="background-color: #0f172a; padding: 1.2rem; border-radius: 8px; margin: 0.5rem 0 1.2rem 0; color: #e2e8f0; font-size: 0.98rem; border: 1px solid #334155;">
+                        {ai_summary_text}
+                    </div>
+                    
+                    <b>2. Kịch bản hành động kỷ luật:</b><br/><br/>
+                    
+                    &nbsp;&nbsp;&nbsp;&nbsp;🟢 <b>Dành cho TRÒ CHƯA CÓ HÀNG (Canh mua chiết khấu):</b><br/>
+                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- Tuyệt đối không mua đuổi hưng phấn khi giá tăng xanh, giữ khoảng cách an toàn với vùng kháng cự.<br/>
+                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- Kiên nhẫn đợi giá chỉnh về <b>Vùng mua chuẩn:</b> <code style="color: #facc15; font-size: 1.1rem;">{decision_res['buy_zone']}</code> để thăm dò vị thế.<br/>
+                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- Điểm mua bứt phá (chỉ mua khi có dòng tiền mạnh xác nhận): <code style="color: #38bdf8;">{decision_res['confirm_price']}</code>.<br/><br/>
+                    
+                    &nbsp;&nbsp;&nbsp;&nbsp;🔴 <b>Dành cho TRÒ ĐÃ CÓ HÀNG (Quản trị vi phạm & chốt lời):</b><br/>
+                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- Chủ động hạ tỷ trọng hoặc chốt lời dần khi giá tiến sát <b>Mục tiêu (TP):</b> <code style="color: #facc15; font-size: 1.1rem;">{decision_res['target_price']}</code>.<br/>
+                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- Bắt buộc cắt lỗ dứt khoát bảo vệ vốn nếu gãy <b>Điểm cắt lỗ (SL):</b> <code style="color: #f87171; font-size: 1.1rem;">{decision_res['stop_loss']}</code>!"
                 </div>
             </div>
             """, unsafe_allow_html=True)
+
         except Exception as e:
-            st.error(f"⚠️ Lỗi hiển thị kịch bản: {e}")
+            st.error(f"⚠️ Lỗi kết nối hoặc xử lý kịch bản Thầy - Trò: {e}")
 
 # --- TAB 3: QUẢN TRỊ VỐN & NAV ---
 with main_tab3:

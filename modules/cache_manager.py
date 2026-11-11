@@ -1,35 +1,26 @@
-import json
 import time
-import hashlib
-from pathlib import Path
-from config import CACHE_DIR, DEFAULT_CACHE_TTL_MINUTES
 
-def _get_cache_path(key: str) -> Path:
-    hashed_key = hashlib.md5(key.encode('utf-8')).hexdigest()
-    return CACHE_DIR / f"{hashed_key}.json"
+class CacheManager:
+    def __init__(self, default_ttl: int = 900): # 900 giây = 15 phút
+        self._cache = {}
+        self.default_ttl = default_ttl
 
-def get_cache(key: str, ttl_minutes: int = DEFAULT_CACHE_TTL_MINUTES):
-    path = _get_cache_path(key)
-    if not path.exists():
-        return None
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        timestamp = data.get("_cached_at", 0)
-        if time.time() - timestamp > ttl_minutes * 60:
-            return None
-        return data.get("payload")
-    except Exception:
+    def get(self, key: str):
+        """Lấy dữ liệu từ cache nếu chưa hết hạn."""
+        if key in self._cache:
+            data, timestamp, ttl = self._cache[key]
+            if time.time() - timestamp < ttl:
+                return data
+            else:
+                del self._cache[key] # Xóa nếu đã hết hạn
         return None
 
-def set_cache(key: str, payload: dict):
-    path = _get_cache_path(key)
-    try:
-        data = {
-            "_cached_at": time.time(),
-            "payload": payload
-        }
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-    except Exception as e:
-        print(f"Lỗi ghi cache: {e}")
+    def set(self, key: str, value: any, ttl: int = None):
+        """Lưu dữ liệu vào cache với thời gian sống (TTL)."""
+        ttl = ttl if ttl is not None else self.default_ttl
+        self._cache[key] = (value, time.time(), ttl)
+
+    def clear(self):
+        """Xóa sạch bộ nhớ đệm."""
+        self._cache.clear()
+

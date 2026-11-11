@@ -1,71 +1,91 @@
-import os
+pimport os
 import json
 import logging
 
-# Cấu hình logging
+# Cấu hình logging để dễ dàng theo dõi lỗi nếu có
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-class AIAnalyzer:
-    def __init__(self, api_key: str = None):
-        """
-        Khởi tạo AI Analyzer.
-        Lấy API key từ tham số hoặc biến môi trường GEMINI_API_KEY.
-        """
-        self.api_key = api_key or os.getenv("GEMINI_API_KEY")
-        self.client = None
+def run_ai_analysis(df, symbol, ato_data=None, financial_metrics=None):
+    """
+    Hàm gọi trực tiếp AI để phân tích dữ liệu chứng khoán thực chiến.
+    Tự động trích xuất các thông số kỹ thuật mới nhất từ DataFrame và kết hợp với dữ liệu tài chính/ATO.
+    """
+    api_key = os.getenv("GEMINI_API_KEY")
+    
+    # Nếu chưa cấu hình API Key, trả về cảnh báo trực tiếp
+    if not api_key:
+        return {
+            "summary": "⚠️ Chưa thiết lập biến môi trường `GEMINI_API_KEY`. Vui lòng cấu hình API Key để kích hoạt phân tích AI sâu.",
+            "fin_summary": f"ROE: {financial_metrics.get('roe', 'N/A')}, P/E: {financial_metrics.get('pe', 'N/A')}",
+            "flow_summary": "Dữ liệu dòng tiền hoạt động bình thường.",
+            "counter_arguments": [
+                "Cần cấu hình API Key từ Google AI Studio.",
+                "Đảm bảo biến môi trường được thiết lập đúng trên hệ thống."
+            ]
+        }
+    
+    try:
+        # Khởi tạo Google GenAI Client
+        from google import genai
+        client = genai.Client(api_key=api_key)
         
-        if self.api_key:
-            try:
-                # Khởi tạo SDK Google GenAI (Gemini)
-                from google import genai
-                self.client = genai.Client(api_key=self.api_key)
-            except Exception as e:
-                logger.error(f"Lỗi khi khởi tạo Google GenAI Client: {e}")
-
-    def analyze_stock_comprehensive(self, symbol: str, indicator_data: dict, money_flow_data: dict, score_data: dict, sr_data: dict = None) -> str:
-        """
-        Tổng hợp dữ liệu định lượng từ các module trong app và gửi câu lệnh tới AI.
-        """
-        # Nếu chưa cấu hình API Key, trả về thông báo hướng dẫn
-        if not self.client:
-            return (
-                "⚠️ **Chưa cấu hình API Key cho AI.**\n\n"
-                "Vui lòng thiết lập biến môi trường `GEMINI_API_KEY` hoặc truyền `api_key` "
-                "vào khởi tạo `AIAnalyzer` để kích hoạt tính năng Siêu Trí Tuệ."
-            )
-
-        # Đóng gói ngữ cảnh chi tiết cho AI
+        # Trích xuất dòng dữ liệu mới nhất từ DataFrame lịch sử
+        last_row = df.iloc[-1]
+        
+        # Đóng gói dữ liệu ngữ cảnh (Context)
+        context_data = {
+            "symbol": symbol,
+            "date": str(last_row['date']) if 'date' in last_row else "N/A",
+            "close_price": float(last_row['close']) if 'close' in last_row else 0.0,
+            "volume": float(last_row['volume']) if 'volume' in last_row else 0.0,
+            "ma20": float(last_row['MA20']) if 'MA20' in last_row else "N/A",
+            "ma50": float(last_row['MA50']) if 'MA50' in last_row else "N/A",
+            "ato_data": ato_data or {},
+            "financial_metrics": financial_metrics or {}
+        }
+        
+        # Xây dựng câu lệnh (Prompt) thông minh chuyên sâu cho chuyên gia tài chính
         prompt = f"""
-        Bạn là một chuyên gia phân tích đầu tư tài chính và chứng khoán hàng đầu.
-        Hãy đưa ra nhận định chuyên sâu và dễ hiểu cho mã cổ phiếu **{symbol}** dựa trên các dữ liệu định lượng thực tế được trích xuất từ hệ thống bên dưới:
+        Bạn là một chuyên gia phân tích đầu tư chứng khoán thực chiến hàng đầu.
+        Hãy phân tích ngắn gọn, sắc bén và đưa ra nhận định chuyên sâu cho mã cổ phiếu **{symbol}** dựa trên các dữ liệu định lượng thực tế sau:
 
-        1. CHỈ BÁO KỸ THUẬT (Technical Indicators):
-        {json.dumps(indicator_data, ensure_ascii=False, indent=2)}
-
-        2. DÒNG TIỀN & THOÁT KHỎI THỊ TRƯỜNG (Money Flow):
-        {json.dumps(money_flow_data, ensure_ascii=False, indent=2)}
-
-        3. ĐIỂM SỐ CỔ PHIẾU (Stock Scoring):
-        {json.dumps(score_data, ensure_ascii=False, indent=2)}
-
-        4. VÙNG HỖ TRỢ & KHÁNG CỰ (Support / Resistance):
-        {json.dumps(sr_data or {}, ensure_ascii=False, indent=2)}
+        {json.dumps(context_data, ensure_ascii=False, indent=2)}
 
         ---
-        YÊU CẦU TRẢ LỜI (Trình bày bằng tiếng Việt, chuẩn định dạng Markdown):
-        - **1. Tổng quan xu hướng:** Xu hướng hiện tại (Ngắn/Trung hạn) và tín hiệu kỹ thuật nổi bật.
-        - **2. Đánh giá Dòng tiền & Điểm số:** Phân tích xem dòng tiền lớn đang vào hay ra, điểm số định lượng phản ánh điều gì.
-        - **3. Khuyến nghị hành động:** Đưa ra lời khuyên cụ thể (Mua gom / Mua gia tăng / Nắm giữ / Bán hạ tỷ trọng / Theo dõi) kèm theo các vùng giá kích hoạt (Entry, Stop-loss, Target).
+        Yêu cầu trả về kết quả bằng tiếng Việt, chuẩn định dạng Markdown, bao gồm:
+        1. **Nhận định xu hướng & Sức mạnh giá hiện tại** của mã.
+        2. **Đánh giá dòng tiền & Yếu tố tài chính cơ bản** (nếu có).
+        3. **Cảnh báo rủi ro / Phản biện bẫy giá** (ít nhất 2 điểm lưu ý quan trọng dành cho nhà đầu tư).
         """
-
-        try:
-            # Gọi mô hình Gemini mới nhất
-            response = self.client.models.generate_content(
-                model='gemini-2.5-flash',
-                contents=prompt,
-            )
-            return response.text
-        except Exception as e:
-            logger.error(f"Lỗi khi gọi API AI: {e}")
-            return f"❌ **Đã xảy ra lỗi trong quá trình AI phân tích:** {str(e)}"
+        
+        # Gọi mô hình Gemini mới nhất
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt,
+        )
+        
+        ai_text = response.text
+        
+        # Trả về kết quả đúng cấu trúc mà App.py đang mong đợi
+        return {
+            "summary": ai_text,
+            "fin_summary": f"ROE: {financial_metrics.get('roe', 'N/A')}% | P/E: {financial_metrics.get('pe', 'N/A')} | Nợ/VCSH: {financial_metrics.get('debt_equity', 'N/A')}",
+            "flow_summary": f"Khối lượng khớp lệnh gần nhất: {last_row.get('volume', 0):,.0f}, giá đóng cửa: {last_row.get('close', 0):,.2f}",
+            "counter_arguments": [
+                "⚠️ Thận trọng với các biến động bất thường của thị trường chung (VN-Index).",
+                "🛡️ Luôn tuân thủ tuyệt đối nguyên tắc quản trị rủi ro và điểm cắt lỗ (Stop-loss)."
+            ]
+        }
+        
+    except Exception as e:
+        logger.error(f"Lỗi gọi trực tiếp AI: {e}")
+        return {
+            "summary": f"❌ Đã xảy ra lỗi trong quá trình kết nối tới AI: {str(e)}",
+            "fin_summary": "Không thể tổng hợp do lỗi kết nối.",
+            "flow_summary": "Không xác định.",
+            "counter_arguments": [
+                "Kiểm tra lại đường truyền internet.",
+                "Xác thực lại hiệu lực của Google Gemini API Key."
+            ]
+        }

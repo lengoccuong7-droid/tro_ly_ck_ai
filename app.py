@@ -257,7 +257,7 @@ with main_tab1:
             st.error(f"⚠️ Lỗi khi xử lý tính toán kỹ thuật: {e}")
             st.info("💡 Vui lòng kiểm tra lại tệp dữ liệu nạp vào xem có đủ các cột Giá và Khối lượng hay không.")
 
-# --- TAB 2: THAM VẤN ĐẦU TƯ (ĐÃ SỬA VÙNG MUA CHUẨN ĐÚNG NGHĨA CHIẾT KHẤU) ---
+# --- TAB 2: THAM VẤN ĐẦU TƯ (ĐÃ SỬA DÙNG MARKDOWN CHUẨN, KHÔNG LỖI HTML) ---
 with main_tab2:
     st.subheader(f"🗣️ THAM VẤN ĐẦU TƯ CHUYÊN SÂU CHO MÃ {symbol_input}")
     
@@ -274,23 +274,22 @@ with main_tab2:
             target_price = f"{last_close * 1.10:,.2f}"
             stop_loss = f"{last_close * 0.93:,.2f}"
 
+            # Dùng cú pháp Markdown thuần túy của Streamlit để hiển thị đẹp mắt, không bao giờ lỗi
+            st.info(f"### 📊 BẢNG THAM VẤN CHIẾN LƯỢC & GÓC NHÌN THỰC CHIẾN")
+            
             st.markdown(f"""
-            <div style="background-color: #1e293b; color: #f8fafc; padding: 2rem; border-radius: 12px; border-left: 6px solid #3b82f6; margin-top: 1rem;">
-                <div style="font-weight: bold; font-size: 1.4rem; color: #60a5fa; margin-bottom: 1.2rem;">📊 BẢNG THAM VẤN CHIẾN LƯỢC & GÓC NHÌN THỰC CHIẾN</div>
-                <div style="line-height: 1.9; font-size: 1.05rem;">
-                    <b>1. Đánh giá trạng thái chung:</b> Mã <b>{symbol_input}</b> đang ở trạng thái <b style="color: #38bdf8;">{decision}</b> với điểm số kỹ thuật tổng hợp là <b>{tech_res['score']}/100</b> (Giá đóng cửa hiện tại: <code>{last_close:,.2f}</code>).<br/><br/>
-                    
-                    <b>2. Phân tích chi tiết hành động & Lý do:</b><br/>
-                    &nbsp;&nbsp;&nbsp;&nbsp;🎯 <b>Dành cho nhà đầu tư CHƯA CÓ HÀNG (Vị thế mua mới):</b><br/>
-                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- <i>Chiến lược:</i> Kiên nhẫn chờ nhịp tích lũy hoặc điều chỉnh về vùng giá chiết khấu chuẩn <code style="color: #facc15; font-size: 1.1rem;">{buy_zone}</code>.<br/>
-                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- <i>Lý do:</i> Vùng mua này thấp hơn giá hiện tại từ 2-4%, trùng khớp với biên độ an toàn trước ngưỡng hỗ trợ. Việc mua đuổi tại mức giá xác nhận hiện tại dễ gặp rủi ro ngắn hạn khi giá chạm kháng cự.<br/><br/>
-                    
-                    &nbsp;&nbsp;&nbsp;&nbsp;🛡️ <b>Dành cho nhà đầu tư ĐÃ CÓ HÀNG (Quản trị danh mục):</b><br/>
-                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- <i>Chiến lược:</i> Tiếp tục nắm giữ, gồng lãi theo xu hướng đường trung bình động.<br/>
-                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- <i>Lý do:</i> Trạng thái dòng tiền chưa phát tín hiệu phân phối mạnh. Chủ động chốt lời từng phần khi tiến sát mục tiêu <code style="color: #facc15; font-size: 1.1rem;">{target_price}</code> và <b>tuân thủ tuyệt đối nguyên tắc cắt lỗ</b> nếu giá gãy ngưỡng hỗ trợ tại <code style="color: #f87171; font-size: 1.1rem;">{stop_loss}</code> nhằm bảo vệ NAV.
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
+**1. Đánh giá trạng thái chung:** 
+Mã **{symbol_input}** đang ở trạng thái **{decision}** với điểm số kỹ thuật tổng hợp là **{tech_res['score']}/100** (Giá đóng cửa hiện tại: `{last_close:,.2f}`).
+
+**2. Phân tích chi tiết hành động & Lý do:**
+* 🎯 **Dành cho nhà đầu tư CHƯA CÓ HÀNG (Vị thế mua mới):**
+  * **Chiến lược:** Kiên nhẫn chờ nhịp tích lũy hoặc điều chỉnh về vùng giá chiết khấu chuẩn `{buy_zone}`.
+  * **Lý do:** Vùng mua này thấp hơn giá hiện tại từ 2-4%, trùng khớp với biên độ an toàn trước ngưỡng hỗ trợ. Việc mua đuổi tại mức giá xác nhận hiện tại dễ gặp rủi ro ngắn hạn khi giá chạm kháng cự.
+
+* 🛡️ **Dành cho nhà đầu tư ĐÃ CÓ HÀNG (Quản trị danh mục):**
+  * **Chiến lược:** Tiếp tục nắm giữ, gồng lãi theo xu hướng đường trung bình động.
+  * **Lý do:** Trạng thái dòng tiền chưa phát tín hiệu phân phối mạnh. Chủ động chốt lời từng phần khi tiến sát mục tiêu `{target_price}` và **tuân thủ tuyệt đối nguyên tắc cắt lỗ** nếu giá gãy ngưỡng hỗ trợ tại `{stop_loss}` nhằm bảo vệ NAV.
+            """)
         except Exception as e:
             st.error(f"⚠️ Lỗi hiển thị bảng tham vấn đầu tư: {e}")
 

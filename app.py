@@ -239,61 +239,58 @@ with main_tab1:
         except Exception as e:
             st.error(f"⚠️ Lỗi xử lý kỹ thuật: {e}")
 
-# --- TAB 2: KỊCH BẢN THẦY - TRÒ (ĐỊNH LƯỢNG NỘI BỘ, CHIA 2 NHÁNH CÓ/CHƯA HÀNG) ---
+# --- TAB 2: KỊCH BẢN THẦY - TRÒ (TÍCH HỢP AI CHUYÊN SÂU) ---
 with main_tab2:
     st.subheader(f"🗣️ KỊCH BẢN LỜI KHUYÊN TỪ THẦY CHO MÃ {symbol_input}")
     
     if df_raw is None or df_raw.empty:
-        st.warning("⚠️ Vui lòng nạp tệp dữ liệu ở thanh bên trái để Thầy có cơ sở phân tích thực chiến.")
+        st.warning("⚠️ Vui lòng nạp tệp dữ liệu ở thanh bên trái để Thầy có cơ sở dữ liệu thực chiến.")
     else:
         try:
+            # Tự động tính toán các chỉ báo và gọi AI phân tích ngầm ngay khi vào Tab 2
             df = add_indicators(df_raw)
             decision_res = make_trading_decision(df, {"summary": ""})
-            tech_res = evaluate_technical(df)
-            sr_res = find_support_resistance(df)
             
-            last_close = float(df['close'].iloc[-1])
+            # Gọi trực tiếp module AI để lấy đánh giá sắc bén
+            with st.spinner("🧠 Siêu Trí Tuệ đang tổng hợp dữ liệu và soạn thảo kịch bản Thầy - Trò..."):
+                ai_res = run_ai_analysis(
+                    df=df, 
+                    symbol=symbol_input, 
+                    ato_data=ato_data, 
+                    financial_metrics=financial_metrics
+                )
             
-            # Xây dựng lời khuyên thuần định lượng thực chiến theo phong cách Thầy - Trò
-            decision_text = decision_res['decision']
-            if decision_text == "MUA":
-                mentor_summary = f"Xu hướng kỹ thuật đạt {tech_res['score']} điểm, dòng tiền đang ủng hộ nhịp tăng. Giá hiện tại ({last_close:,.2f}) đang nằm ở vùng gom tích cực, cách xa kháng cự ({sr_res['resistance']})."
-            elif decision_text == "CHỜ MUA":
-                mentor_summary = f"Cổ phiếu đang tích lũy, điểm số kỹ thuật là {tech_res['score']} điểm. Không vội vàng đua lệnh xanh, kiên nhẫn chờ giá lùi về vùng chiết khấu sát hỗ trợ ({sr_res['support']})."
-            elif decision_text == "GIỮ":
-                mentor_summary = f"Trạng thái đi ngang tích lũy an toàn. Tiếp tục quan sát phản ứng của giá tại hỗ trợ gần nhất ({sr_res['support']})."
-            elif decision_text == "CHỜ BÁN":
-                mentor_summary = f"Động lượng ngắn hạn suy yếu (điểm số {tech_res['score']}). Tuyệt đối không hoảng loạn bán tháo khi giá sát hỗ trợ, canh nhịp hồi phục để cơ cấu."
-            else:
-                mentor_summary = f"Tín hiệu kỹ thuật tiêu cực vi phạm ngưỡng an toàn. Ưu tiên quản trị vốn và hạ tỷ trọng."
+            ai_summary_text = ai_res.get("summary", "Đang cập nhật phân tích từ hệ thống.")
 
+            # Hiển thị giao diện Thầy - Trò chuyên sâu
             st.markdown(f"""
             <div style="background-color: #1e293b; color: #f8fafc; padding: 2rem; border-radius: 12px; border-left: 6px solid #3b82f6; margin-top: 1rem;">
-                <div style="font-weight: bold; font-size: 1.4rem; color: #60a5fa; margin-bottom: 1rem;">🎯 GÓC NHÌN CỐ VẤN THỰC CHIẾN (ĐỊNH LƯỢNG KỶ LUẬT)</div>
+                <div style="font-weight: bold; font-size: 1.4rem; color: #60a5fa; margin-bottom: 1rem;">🎯 GÓC NHÌN CỐ VẤN THỰC CHIẾN (AI POWERED)</div>
                 <div style="line-height: 1.8; font-size: 1.05rem;">
-                    "Trò chú ý! Đối với mã <b>{symbol_input}</b>, hệ thống xác nhận trạng thái thị trường là: <b style="color: #38bdf8;">{decision_text}</b>.<br/><br/>
+                    "Trò chú ý! Đối với mã <b>{symbol_input}</b>, hệ thống xác nhận trạng thái thị trường là: <b style="color: #38bdf8;">{decision_res['decision']}</b>.<br/><br/>
                     
                     <b>1. Nhận định tổng quan từ Thầy:</b><br/>
-                    <div style="background-color: #0f172a; padding: 1.2rem; border-radius: 8px; margin: 0.5rem 0 1.2rem 0; color: #e2e8f0; font-size: 0.98rem; border: 1px solid #334155;">
-                        {mentor_summary}
+                    <div style="background-color: #0f172a; padding: 1rem; border-radius: 8px; margin: 0.5rem 0 1rem 0; color: #e2e8f0; font-size: 0.95rem;">
+                        {ai_summary_text}
                     </div>
                     
-                    <b>2. Kịch bản hành động kỷ luật:</b><br/><br/>
+                    <b>2. Chiến lược hành động chi tiết:</b><br/>
                     
-                    &nbsp;&nbsp;&nbsp;&nbsp;🟢 <b>Dành cho TRÒ CHƯA CÓ HÀNG (Canh mua chiết khấu):</b><br/>
-                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- Tuyệt đối không mua đuổi hưng phấn khi giá tăng xanh, giữ khoảng cách an toàn với vùng kháng cự ({sr_res['resistance']}).<br/>
-                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- Kiên nhẫn đợi giá chỉnh về <b>Vùng mua chuẩn:</b> <code style="color: #facc15; font-size: 1.1rem;">{decision_res['buy_zone']}</code> để thăm dò vị thế.<br/>
-                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- Điểm mua bứt phá (chỉ mua khi có dòng tiền mạnh xác nhận): <code style="color: #38bdf8;">{decision_res['confirm_price']}</code>.<br/><br/>
+                    &nbsp;&nbsp;&nbsp;&nbsp;🟢 <b>Dành cho TRÒ CHƯA CÓ HÀNG (Canh mua an toàn):</b><br/>
+                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- Tuyệt đối không mua đuổi hưng phấn, tránh xa vùng kháng cự phía trên.<br/>
+                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- Kiên nhẫn chờ giá chiết khấu về đúng <b>Vùng mua chuẩn:</b> <code style="color: #facc15; font-size: 1.1rem;">{decision_res['buy_zone']}</code> để lấy vị thế thăm dò.<br/>
+                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- Điểm xác nhận bứt phá nếu muốn mua gia tăng: <code style="color: #38bdf8;">{decision_res['confirm_price']}</code>.<br/><br/>
                     
-                    &nbsp;&nbsp;&nbsp;&nbsp;🔴 <b>Dành cho TRÒ ĐÃ CÓ HÀNG (Quản trị vi phạm & chốt lời):</b><br/>
-                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- Chủ động hạ tỷ trọng hoặc chốt lời dần khi giá tiến sát <b>Mục tiêu (TP):</b> <code style="color: #facc15; font-size: 1.1rem;">{decision_res['target_price']}</code>.<br/>
-                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- Bắt buộc cắt lỗ dứt khoát bảo vệ vốn nếu gãy <b>Điểm cắt lỗ (SL):</b> <code style="color: #f87171; font-size: 1.1rem;">{decision_res['stop_loss']}</code>!"
+                    &nbsp;&nbsp;&nbsp;&nbsp;🔴 <b>Dành cho TRÒ ĐÃ CÓ HÀNG (Quản trị danh mục):</b><br/>
+                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- Tiếp tục gồng lãi theo xu hướng nếu dòng tiền lớn chưa thoát.<br/>
+                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- Chủ động canh chốt lời một phần khi tiến sát <b>Mục tiêu (TP):</b> <code style="color: #facc15; font-size: 1.1rem;">{decision_res['target_price']}</code>.<br/>
+                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- Tuân thủ kỷ luật thép: Hạ tỷ trọng hoặc cắt lỗ dứt khoát ngay lập tức nếu thủng <b>Điểm cắt lỗ (SL):</b> <code style="color: #f87171; font-size: 1.1rem;">{decision_res['stop_loss']}</code>!"
                 </div>
             </div>
             """, unsafe_allow_html=True)
 
         except Exception as e:
-            st.error(f"⚠️ Lỗi xử lý kịch bản Thầy - Trò: {e}")
+            st.error(f"⚠️ Lỗi kết nối hoặc xử lý kịch bản Thầy - Trò: {e}")
 
 # --- TAB 3: TRÒ CHUYỆN GEMINI (TAB RIÊNG BIỆT) ---
 with main_tab3:

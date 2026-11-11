@@ -57,11 +57,15 @@ if "portfolio_user" not in st.session_state:
         {"Mã": "FPT", "Khối Lượng": 5000, "Giá Vốn": 49.5, "Giá Hiện Tại": 51.0}
     ])
 
+# Khởi tạo lịch sử chat riêng cho tab chat Gemini
+if "gemini_chat_history" not in st.session_state:
+    st.session_state["gemini_chat_history"] = []
+
 # -----------------------------------------------------------------------------
 # 2. GIAO DIỆN CHÍNH & SIDEBAR
 # -----------------------------------------------------------------------------
 st.title(f"📈 {APP_NAME} (v{APP_VERSION} ULTIMATE PRO)")
-st.caption("Hệ thống Trợ lý Phân tích Chứng khoán Thực chiến - AI Powered & Định lượng Sắc Bén")
+st.caption("Hệ thống Trợ lý Phân tích Chứng khoán Thực chiến - Định lượng & Trợ lý Gemini Riêng Biệt")
 
 st.sidebar.header("⚙️ 1. Nguồn Dữ Liệu Lịch Sử")
 uploaded_file = st.sidebar.file_uploader("Nạp tệp CSV hoặc Excel (Lần cuối, KL, % Thay đổi...)", type=["csv", "xlsx", "xls"])
@@ -156,13 +160,14 @@ if fin_debt.strip():
     except: pass
 
 # -----------------------------------------------------------------------------
-# 3. HỆ THỐNG 4 TABS THỰC CHIẾN
+# 3. HỆ THỐNG 5 TABS THỰC CHIẾN
 # -----------------------------------------------------------------------------
-main_tab1, main_tab2, main_tab3, main_tab4 = st.tabs([
+main_tab1, main_tab2, main_tab3, main_tab4, main_tab5 = st.tabs([
     "📊 TAB 1: KỸ THUẬT & TÀI CHÍNH", 
     "🗣️ TAB 2: KỊCH BẢN THẦY - TRÒ",
-    "💼 TAB 3: QUẢN TRỊ VỐN & NAV",
-    "📜 TAB 4: LỊCH SỬ & QUẢN LÝ MÃ"
+    "🤖 TAB 3: TRÒ CHUYỆN GEMINI",
+    "💼 TAB 4: QUẢN TRỊ VỐN & NAV",
+    "📜 TAB 5: LỊCH SỬ & QUẢN LÝ MÃ"
 ])
 
 # --- TAB 1: KỸ THUẬT & TÀI CHÍNH ---
@@ -234,7 +239,7 @@ with main_tab1:
         except Exception as e:
             st.error(f"⚠️ Lỗi xử lý kỹ thuật: {e}")
 
-# --- TAB 2: KỊCH BẢN THẦY - TRÒ (TỰ ĐỘNG GỌI AI GEMINI & TÁCH HAI NHÁNH) ---
+# --- TAB 2: KỊCH BẢN THẦY - TRÒ (ĐỊNH LƯỢNG NỘI BỘ, CHIA 2 NHÁNH CÓ/CHƯA HÀNG) ---
 with main_tab2:
     st.subheader(f"🗣️ KỊCH BẢN LỜI KHUYÊN TỪ THẦY CHO MÃ {symbol_input}")
     
@@ -244,34 +249,39 @@ with main_tab2:
         try:
             df = add_indicators(df_raw)
             decision_res = make_trading_decision(df, {"summary": ""})
+            tech_res = evaluate_technical(df)
+            sr_res = find_support_resistance(df)
             
-            # Tự động gọi AI Gemini ngầm ngay khi chuyển sang Tab 2
-            with st.spinner(f"🧠 Siêu Trí Tuệ đang kết nối Gemini để phân tích sâu mã {symbol_input}..."):
-                ai_res = run_ai_analysis(
-                    df=df, 
-                    symbol=symbol_input, 
-                    ato_data=ato_data, 
-                    financial_metrics=financial_metrics
-                )
+            last_close = float(df['close'].iloc[-1])
             
-            ai_summary_text = ai_res.get("summary", "Đang cập nhật phân tích từ hệ thống.")
+            # Xây dựng lời khuyên thuần định lượng thực chiến theo phong cách Thầy - Trò
+            decision_text = decision_res['decision']
+            if decision_text == "MUA":
+                mentor_summary = f"Xu hướng kỹ thuật đạt {tech_res['score']} điểm, dòng tiền đang ủng hộ nhịp tăng. Giá hiện tại ({last_close:,.2f}) đang nằm ở vùng gom tích cực, cách xa kháng cự ({sr_res['resistance']})."
+            elif decision_text == "CHỜ MUA":
+                mentor_summary = f"Cổ phiếu đang tích lũy, điểm số kỹ thuật là {tech_res['score']} điểm. Không vội vàng đua lệnh xanh, kiên nhẫn chờ giá lùi về vùng chiết khấu sát hỗ trợ ({sr_res['support']})."
+            elif decision_text == "GIỮ":
+                mentor_summary = f"Trạng thái đi ngang tích lũy an toàn. Tiếp tục quan sát phản ứng của giá tại hỗ trợ gần nhất ({sr_res['support']})."
+            elif decision_text == "CHỜ BÁN":
+                mentor_summary = f"Động lượng ngắn hạn suy yếu (điểm số {tech_res['score']}). Tuyệt đối không hoảng loạn bán tháo khi giá sát hỗ trợ, canh nhịp hồi phục để cơ cấu."
+            else:
+                mentor_summary = f"Tín hiệu kỹ thuật tiêu cực vi phạm ngưỡng an toàn. Ưu tiên quản trị vốn và hạ tỷ trọng."
 
-            # Hiển thị giao diện Thầy - Trò tích hợp AI phân tách rõ Có hàng / Chưa có hàng
             st.markdown(f"""
             <div style="background-color: #1e293b; color: #f8fafc; padding: 2rem; border-radius: 12px; border-left: 6px solid #3b82f6; margin-top: 1rem;">
-                <div style="font-weight: bold; font-size: 1.4rem; color: #60a5fa; margin-bottom: 1rem;">🎯 GÓC NHÌN CỐ VẤN THỰC CHIẾN (AI POWERED)</div>
+                <div style="font-weight: bold; font-size: 1.4rem; color: #60a5fa; margin-bottom: 1rem;">🎯 GÓC NHÌN CỐ VẤN THỰC CHIẾN (ĐỊNH LƯỢNG KỶ LUẬT)</div>
                 <div style="line-height: 1.8; font-size: 1.05rem;">
-                    "Trò chú ý! Đối với mã <b>{symbol_input}</b>, hệ thống xác nhận trạng thái thị trường là: <b style="color: #38bdf8;">{decision_res['decision']}</b>.<br/><br/>
+                    "Trò chú ý! Đối với mã <b>{symbol_input}</b>, hệ thống xác nhận trạng thái thị trường là: <b style="color: #38bdf8;">{decision_text}</b>.<br/><br/>
                     
-                    <b>1. Nhận định tổng quan từ Thầy (Gemini AI):</b><br/>
+                    <b>1. Nhận định tổng quan từ Thầy:</b><br/>
                     <div style="background-color: #0f172a; padding: 1.2rem; border-radius: 8px; margin: 0.5rem 0 1.2rem 0; color: #e2e8f0; font-size: 0.98rem; border: 1px solid #334155;">
-                        {ai_summary_text}
+                        {mentor_summary}
                     </div>
                     
                     <b>2. Kịch bản hành động kỷ luật:</b><br/><br/>
                     
                     &nbsp;&nbsp;&nbsp;&nbsp;🟢 <b>Dành cho TRÒ CHƯA CÓ HÀNG (Canh mua chiết khấu):</b><br/>
-                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- Tuyệt đối không mua đuổi hưng phấn khi giá tăng xanh, giữ khoảng cách an toàn với vùng kháng cự.<br/>
+                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- Tuyệt đối không mua đuổi hưng phấn khi giá tăng xanh, giữ khoảng cách an toàn với vùng kháng cự ({sr_res['resistance']}).<br/>
                     &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- Kiên nhẫn đợi giá chỉnh về <b>Vùng mua chuẩn:</b> <code style="color: #facc15; font-size: 1.1rem;">{decision_res['buy_zone']}</code> để thăm dò vị thế.<br/>
                     &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- Điểm mua bứt phá (chỉ mua khi có dòng tiền mạnh xác nhận): <code style="color: #38bdf8;">{decision_res['confirm_price']}</code>.<br/><br/>
                     
@@ -283,10 +293,44 @@ with main_tab2:
             """, unsafe_allow_html=True)
 
         except Exception as e:
-            st.error(f"⚠️ Lỗi kết nối hoặc xử lý kịch bản Thầy - Trò: {e}")
+            st.error(f"⚠️ Lỗi xử lý kịch bản Thầy - Trò: {e}")
 
-# --- TAB 3: QUẢN TRỊ VỐN & NAV ---
+# --- TAB 3: TRÒ CHUYỆN GEMINI (TAB RIÊNG BIỆT) ---
 with main_tab3:
+    st.subheader(f"🤖 Trò Chuyện & Hỏi Đáp Riêng Biệt Với Gemini (Mã {symbol_input})")
+    st.caption("Nhập câu hỏi tự do hoặc yêu cầu Gemini phân tích sâu thêm về mã cổ phiếu này.")
+    
+    # Hiển thị lịch sử chat
+    for message in st.session_state["gemini_chat_history"]:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+    # Ô nhập chat ở dưới cùng
+    if user_prompt := st.chat_input(f"Hỏi Gemini về mã {symbol_input} hoặc thị trường..."):
+        st.session_state["gemini_chat_history"].append({"role": "user", "content": user_prompt})
+        with st.chat_message("user"):
+            st.markdown(user_prompt)
+
+        with st.chat_message("assistant"):
+            with st.spinner("Gemini đang suy nghĩ và trả lời..."):
+                try:
+                    # Gọi hàm AI phân tích kết hợp câu hỏi của user
+                    df_chat = add_indicators(df_raw) if df_raw is not None and not df_raw.empty else pd.DataFrame()
+                    ai_response = run_ai_analysis(
+                        df=df_chat, 
+                        symbol=symbol_input, 
+                        ato_data=ato_data, 
+                        financial_metrics=financial_metrics
+                    )
+                    reply_text = f"**Phân tích bổ sung từ Gemini cho {symbol_input}:**\n\n{ai_response.get('summary', 'Không có phản hồi.')}\n\n*(Trả lời cho câu hỏi: \"{user_prompt}\")*"
+                except Exception as e:
+                    reply_text = f"Lỗi kết nối Gemini: {e}"
+                
+                st.markdown(reply_text)
+                st.session_state["gemini_chat_history"].append({"role": "assistant", "content": reply_text})
+
+# --- TAB 4: QUẢN TRỊ VỐN & NAV ---
+with main_tab4:
     st.subheader("💼 QUẢN TRỊ VỐN & DÒNG TIỀN DANH MỤC")
     edited_portfolio = st.data_editor(st.session_state["portfolio_user"], num_rows="dynamic", key="pf_editor_main", use_container_width=True)
     if st.button("⚡ Lưu & Cập Nhật Dòng Tiền Danh Mục", use_container_width=True):
@@ -294,8 +338,8 @@ with main_tab3:
         st.success("Đã cập nhật danh mục thành công!")
         st.rerun()
 
-# --- TAB 4: LỊCH SỬ & QUẢN LÝ MÃ ---
-with main_tab4:
+# --- TAB 5: LỊCH SỬ & QUẢN LÝ MÃ ---
+with main_tab5:
     st.subheader("📜 Nhật Ký & Quản Lý Lịch Sử Phân Tích")
     filter_symbol = st.text_input("🔍 Lọc theo mã cổ phiếu:", value="").upper()
     try:

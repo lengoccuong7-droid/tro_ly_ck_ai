@@ -23,6 +23,14 @@ from modules.support_resistance import find_support_resistance
 from modules.stock_scoring import score_description
 from modules.ai_analyzer import run_ai_analysis
 from modules import decision_engine
+import inspect
+
+st.write("FILE DECISION ENGINE:", decision_engine.__file__)
+
+st.write(
+    "FUNCTION SIGNATURE:",
+    inspect.signature(decision_engine.make_trading_decision)
+)
 from modules.database import save_analysis, get_recent_history
 
 

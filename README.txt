@@ -1,18 +1,35 @@
-STOCK AI ANALYST - VERSION 2.0.0 (CLEAN & FAST EDITION)
-Hệ thống phân tích chứng khoán đa nguồn dữ liệu, tích hợp AI Phản biện & Quản trị rủi ro.
+# BOT TRADER SWING – MULTI STOCK (OFFLINE)
 
-CÁC NÂNG CẤP ĐẶC BIỆT:
-1. NÓI KHÔNG VỚI DỮ LIỆU GIẢ LẬP: Nếu mất mạng hoặc API lỗi, hệ thống báo lỗi minh bạch và yêu cầu nạp CSV/Excel.
-2. TIMEOUT 3 GIÂY: Giới hạn thời gian chờ kết nối online tối đa 3 giây, loại bỏ hoàn toàn tình trạng treo/đóng băng giao diện.
-3. CACHE MANAGER TỐI ƯU: Truy xuất dữ liệu đã tải trong 0.1s, giảm 90% số lần gọi mạng.
-4. ƯU TIÊN TỆP NGOẠI TUYẾN: Hỗ trợ nạp trực tiếp file CSV/Excel xuất từ bảng giá các CTCK (VPS, SSI, TCBS...) với độ chính xác 100%.
+## Chạy ứng dụng
+```bash
+python -m venv .venv
+# Windows: .venv\Scripts\activate
+# macOS/Linux: source .venv/bin/activate
+pip install -r requirements.txt
+streamlit run app.py
+```
 
-CÀI ĐẶT VÀ VẬN HÀNH:
-1. Cài đặt phụ thuộc:
-   pip install -r requirements.txt
+## Nguyên tắc dữ liệu
+- Không chứa dữ liệu cổ phiếu mẫu trong mã nguồn.
+- Dữ liệu phân tích được đọc từ file do người dùng tải lên.
+- Không tải dữ liệu từ Internet.
+- Không tự điền chỉ báo bị thiếu bằng số giả.
+- Chỉ báo được tính từ OHLCV khi đủ dữ liệu và có công thức rõ ràng.
+- DXG chỉ là một file kiểm thử do người dùng cung cấp, không bị mã hóa cố định.
 
-2. Cài đặt Vnstock (tùy chọn nguồn trực tuyến):
-   python -m pip install -U --extra-index-url https://vnstocks.com/api/simple vnstock vnai
+## Định dạng
+CSV, XLSX, XLS, JSON, TXT, Parquet, PDF (bảng văn bản trích xuất được), DOCX (bảng).
+PDF/DOCX không phải file dữ liệu giá chuyên dụng; cần bảng có tiêu đề cột nhận diện được.
+XLS yêu cầu xlrd; Parquet yêu cầu pyarrow.
 
-3. Khởi chạy app:
-   streamlit run app.py
+## Cấu trúc dữ liệu tối thiểu
+Date, Open, High, Low, Close, Volume.
+Có thể thêm Symbol/Ticker để phân tích nhiều mã trong cùng file.
+Đơn vị giá được giữ nguyên theo file. Không tự nhân/chia 1.000.
+
+## Ghi chú
+Đây là công cụ hỗ trợ phân tích, không bảo đảm lợi nhuận và không tự đặt lệnh.
+Backtest là mô phỏng đơn giản, cần tính thêm phí, thuế, trượt giá theo cấu hình phù hợp trước khi dùng vốn thật.
+
+## Trợ lý phân tích TAB 3
+TAB 3 dùng bộ luật diễn giải offline (rule-based), không gọi mô hình AI cloud. Các nhận định được truy ra từ chỉ báo thực tế; không có kết nối mạng. Muốn dùng mô hình ngôn ngữ AI thực thụ cần một mô hình local riêng và kiểm định độc lập.

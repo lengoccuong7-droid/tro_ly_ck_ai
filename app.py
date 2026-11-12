@@ -1,21 +1,5 @@
 
 import streamlit as st
-import inspect
-import modules.decision_engine as decision_module
-
-st.sidebar.write(
-    "DEBUG MODULE:",
-    decision_module.__file__
-)
-
-st.sidebar.write(
-    "DEBUG PARAMETERS:",
-    list(
-        inspect.signature(
-            decision_module.make_trading_decision
-        ).parameters.keys()
-    )
-)
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
@@ -26,24 +10,40 @@ import io
 import os
 import re
 import unicodedata
+import inspect
 
 from openpyxl.styles import Alignment
 
 from config import APP_NAME, APP_VERSION, DB_PATH
+
 from modules.indicators import add_indicators
 from modules.technical_analysis import evaluate_technical
 from modules.money_flow import evaluate_money_flow
 from modules.support_resistance import find_support_resistance
 from modules.stock_scoring import score_description
 from modules.ai_analyzer import run_ai_analysis
-import inspect
-import modules.decision_engine as decision_module
+from modules import decision_engine
 
-st.sidebar.write("DEBUG MODULE:", decision_module.__file__)
-st.sidebar.write(
-    "DEBUG PARAMETERS:",
-    list(inspect.signature(make_trading_decision).parameters.keys())
-)
+from modules.database import save_analysis, get_recent_history
+
+# KIỂM TRA MODULE QUYẾT ĐỊNH
+try:
+    decision_function = decision_engine.make_trading_decision
+
+    st.sidebar.caption(
+        f"Decision Engine: {decision_engine.__file__}"
+    )
+
+    st.sidebar.caption(
+        "Tham số: "
+        + ", ".join(
+            inspect.signature(decision_function).parameters.keys()
+        )
+    )
+
+except Exception as e:
+    st.error(f"Không tải được Decision Engine: {e}")
+    st.stop()
 from modules.database import save_analysis, get_recent_history
 
 
@@ -681,7 +681,7 @@ def calculate_stock_analysis(data, symbol, ato_data=None, financial_metrics=None
         financial_metrics=financial_metrics,
     )
 
-    decision_res = make_trading_decision(
+    decision_res = decision_engine.make_trading_decision(
         df=df,
         ai_result=ai_res,
         capital_vnd=100_000_000,

@@ -98,10 +98,15 @@ def make_trading_decision(
         stop_loss = max(0.01, entry_reference - 1.5 * atr)
 
     risk_per_share = max(entry_reference - stop_loss, 0.01)
-    nearest_target = resistance if resistance > entry_reference else entry_reference + 2.0 * atr
-    target_price = max(nearest_target, entry_reference + 2.0 * risk_per_share)
-    reward_risk = (target_price - entry_reference) / risk_per_share if risk_per_share > 0 else 0.0
+    if resistance > entry_reference:
+    target_price = resistance
+    else:
+        target_price = entry_reference + 2.0 * risk_per_share
 
+    reward_risk = (
+        (target_price - entry_reference) / risk_per_share
+        if risk_per_share > 0 else 0.0
+    )
     distance_to_ma20_atr = (close - ma20) / atr if atr > 0 else 0.0
     resistance_distance = _num(sr.get("dist_to_resistance_pct"), 99.0)
     overbought = rsi >= 70

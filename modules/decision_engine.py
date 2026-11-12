@@ -91,8 +91,11 @@ def make_trading_decision(
     zone_low = max(0.01, min(zone_low, zone_high))
 
     # Stop-loss duoi ho tro/duoi bien dong ATR; muc tieu toi thieu 2R neu khang cu qua gan.
-    stop_loss = min(support * 0.985, close - 1.5 * atr)
-    stop_loss = max(0.01, min(stop_loss, close * 0.97))
+    stop_loss = min(
+    support * 0.985,
+    close - 1.5 * atr
+)
+stop_loss = max(0.01, stop_loss)
     entry_reference = (zone_low + zone_high) / 2
     if entry_reference <= stop_loss:
         stop_loss = max(0.01, entry_reference - 1.5 * atr)
